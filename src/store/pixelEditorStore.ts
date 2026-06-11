@@ -1203,6 +1203,334 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
 
   setOnionSkinOpacity: (opacity) => set({ onionSkinOpacity: Math.max(0.1, Math.min(0.9, opacity)) }),
 
+  flipFrameHorizontal: (frameId) => {
+    const { character, currentActionId } = get();
+    if (!currentActionId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === frameId);
+    if (!frame) return;
+
+    for (const layer of frame.layers) {
+      if (layer.locked) continue;
+      for (let y = 0; y < character.height; y++) {
+        layer.pixels[y].reverse();
+      }
+    }
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  flipFrameVertical: (frameId) => {
+    const { character, currentActionId } = get();
+    if (!currentActionId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === frameId);
+    if (!frame) return;
+
+    for (const layer of frame.layers) {
+      if (layer.locked) continue;
+      layer.pixels.reverse();
+    }
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  rotateFrame: (frameId, degrees) => {
+    const { character, currentActionId } = get();
+    if (!currentActionId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === frameId);
+    if (!frame) return;
+
+    const w = character.width;
+    const h = character.height;
+
+    const rotatePixels = (pixels: number[][]): number[][] => {
+      if (degrees === 90) {
+        const rotated: number[][] = Array(h).fill(null).map(() => Array(w).fill(-1));
+        const srcW = w;
+        const srcH = h;
+        const temp: number[][] = Array(srcW).fill(null).map(() => Array(srcH).fill(-1));
+        for (let y = 0; y < srcH; y++) {
+          for (let x = 0; x < srcW; x++) {
+            temp[x][srcH - 1 - y] = pixels[y][x];
+          }
+        }
+        const offsetX = Math.floor((w - srcH) / 2);
+        const offsetY = Math.floor((h - srcW) / 2);
+        for (let y = 0; y < srcW; y++) {
+          for (let x = 0; x < srcH; x++) {
+            const dstY = y + offsetY;
+            const dstX = x + offsetX;
+            if (dstY >= 0 && dstY < h && dstX >= 0 && dstX < w) {
+              rotated[dstY][dstX] = temp[y][x];
+            }
+          }
+        }
+        return rotated;
+      } else if (degrees === 180) {
+        const rotated: number[][] = Array(h).fill(null).map(() => Array(w).fill(-1));
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            rotated[h - 1 - y][w - 1 - x] = pixels[y][x];
+          }
+        }
+        return rotated;
+      } else if (degrees === 270) {
+        const rotated: number[][] = Array(h).fill(null).map(() => Array(w).fill(-1));
+        const srcW = w;
+        const srcH = h;
+        const temp: number[][] = Array(srcW).fill(null).map(() => Array(srcH).fill(-1));
+        for (let y = 0; y < srcH; y++) {
+          for (let x = 0; x < srcW; x++) {
+            temp[srcW - 1 - x][y] = pixels[y][x];
+          }
+        }
+        const offsetX = Math.floor((w - srcH) / 2);
+        const offsetY = Math.floor((h - srcW) / 2);
+        for (let y = 0; y < srcW; y++) {
+          for (let x = 0; x < srcH; x++) {
+            const dstY = y + offsetY;
+            const dstX = x + offsetX;
+            if (dstY >= 0 && dstY < h && dstX >= 0 && dstX < w) {
+              rotated[dstY][dstX] = temp[y][x];
+            }
+          }
+        }
+        return rotated;
+      }
+      return pixels;
+    };
+
+    for (const layer of frame.layers) {
+      if (layer.locked) continue;
+      layer.pixels = rotatePixels(layer.pixels);
+    }
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  shiftFrame: (frameId, direction, amount = 1) => {
+    const { character, currentActionId } = get();
+    if (!currentActionId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === frameId);
+    if (!frame) return;
+
+    const w = character.width;
+    const h = character.height;
+
+    const shiftPixels = (pixels: number[][]): number[][] => {
+      const result = createEmptyPixels(w, h);
+      const dx = direction === 'left' ? -amount : direction === 'right' ? amount : 0;
+      const dy = direction === 'up' ? -amount : direction === 'down' ? amount : 0;
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const srcY = y - dy;
+          const srcX = x - dx;
+          if (srcY >= 0 && srcY < h && srcX >= 0 && srcX < w) {
+            result[y][x] = pixels[srcY][srcX];
+          }
+        }
+      }
+      return result;
+    };
+
+    for (const layer of frame.layers) {
+      if (layer.locked) continue;
+      layer.pixels = shiftPixels(layer.pixels);
+    }
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  batchFlipFramesHorizontal: (frameIds) => {
+    const { character, currentActionId } = get();
+    if (!currentActionId || frameIds.length === 0) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    for (const frameId of frameIds) {
+      const frame = action.frames.find((f) => f.id === frameId);
+      if (!frame) continue;
+      for (const layer of frame.layers) {
+        if (layer.locked) continue;
+        for (let y = 0; y < character.height; y++) {
+          layer.pixels[y].reverse();
+        }
+      }
+    }
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  batchFlipFramesVertical: (frameIds) => {
+    const { character, currentActionId } = get();
+    if (!currentActionId || frameIds.length === 0) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    for (const frameId of frameIds) {
+      const frame = action.frames.find((f) => f.id === frameId);
+      if (!frame) continue;
+      for (const layer of frame.layers) {
+        if (layer.locked) continue;
+        layer.pixels.reverse();
+      }
+    }
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  batchRotateFrames: (frameIds, degrees) => {
+    const { character, currentActionId } = get();
+    if (!currentActionId || frameIds.length === 0) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const w = character.width;
+    const h = character.height;
+
+    const rotatePixels = (pixels: number[][]): number[][] => {
+      if (degrees === 90) {
+        const rotated: number[][] = Array(h).fill(null).map(() => Array(w).fill(-1));
+        const srcW = w;
+        const srcH = h;
+        const temp: number[][] = Array(srcW).fill(null).map(() => Array(srcH).fill(-1));
+        for (let y = 0; y < srcH; y++) {
+          for (let x = 0; x < srcW; x++) {
+            temp[x][srcH - 1 - y] = pixels[y][x];
+          }
+        }
+        const offsetX = Math.floor((w - srcH) / 2);
+        const offsetY = Math.floor((h - srcW) / 2);
+        for (let y = 0; y < srcW; y++) {
+          for (let x = 0; x < srcH; x++) {
+            const dstY = y + offsetY;
+            const dstX = x + offsetX;
+            if (dstY >= 0 && dstY < h && dstX >= 0 && dstX < w) {
+              rotated[dstY][dstX] = temp[y][x];
+            }
+          }
+        }
+        return rotated;
+      } else if (degrees === 180) {
+        const rotated: number[][] = Array(h).fill(null).map(() => Array(w).fill(-1));
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            rotated[h - 1 - y][w - 1 - x] = pixels[y][x];
+          }
+        }
+        return rotated;
+      } else if (degrees === 270) {
+        const rotated: number[][] = Array(h).fill(null).map(() => Array(w).fill(-1));
+        const srcW = w;
+        const srcH = h;
+        const temp: number[][] = Array(srcW).fill(null).map(() => Array(srcH).fill(-1));
+        for (let y = 0; y < srcH; y++) {
+          for (let x = 0; x < srcW; x++) {
+            temp[srcW - 1 - x][y] = pixels[y][x];
+          }
+        }
+        const offsetX = Math.floor((w - srcH) / 2);
+        const offsetY = Math.floor((h - srcW) / 2);
+        for (let y = 0; y < srcW; y++) {
+          for (let x = 0; x < srcH; x++) {
+            const dstY = y + offsetY;
+            const dstX = x + offsetX;
+            if (dstY >= 0 && dstY < h && dstX >= 0 && dstX < w) {
+              rotated[dstY][dstX] = temp[y][x];
+            }
+          }
+        }
+        return rotated;
+      }
+      return pixels;
+    };
+
+    for (const frameId of frameIds) {
+      const frame = action.frames.find((f) => f.id === frameId);
+      if (!frame) continue;
+      for (const layer of frame.layers) {
+        if (layer.locked) continue;
+        layer.pixels = rotatePixels(layer.pixels);
+      }
+    }
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  batchShiftFrames: (frameIds, direction, amount = 1) => {
+    const { character, currentActionId } = get();
+    if (!currentActionId || frameIds.length === 0) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const w = character.width;
+    const h = character.height;
+
+    const shiftPixels = (pixels: number[][]): number[][] => {
+      const result = createEmptyPixels(w, h);
+      const dx = direction === 'left' ? -amount : direction === 'right' ? amount : 0;
+      const dy = direction === 'up' ? -amount : direction === 'down' ? amount : 0;
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const srcY = y - dy;
+          const srcX = x - dx;
+          if (srcY >= 0 && srcY < h && srcX >= 0 && srcX < w) {
+            result[y][x] = pixels[srcY][srcX];
+          }
+        }
+      }
+      return result;
+    };
+
+    for (const frameId of frameIds) {
+      const frame = action.frames.find((f) => f.id === frameId);
+      if (!frame) continue;
+      for (const layer of frame.layers) {
+        if (layer.locked) continue;
+        layer.pixels = shiftPixels(layer.pixels);
+      }
+    }
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
   generateParticleAnimation: (config) => {
     const { character } = get();
     const {

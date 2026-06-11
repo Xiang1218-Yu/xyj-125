@@ -138,6 +138,14 @@ export interface PixelEditorActions {
   setLayerOpacity: (layerId: string, opacity: number) => void;
   getCurrentLayer: () => Layer | null;
   getFrameMergedPixels: (frame: Frame) => number[][];
+  flipFrameHorizontal: (frameId: string) => void;
+  flipFrameVertical: (frameId: string) => void;
+  rotateFrame: (frameId: string, degrees: 90 | 180 | 270) => void;
+  shiftFrame: (frameId: string, direction: 'left' | 'right' | 'up' | 'down', amount?: number) => void;
+  batchFlipFramesHorizontal: (frameIds: string[]) => void;
+  batchFlipFramesVertical: (frameIds: string[]) => void;
+  batchRotateFrames: (frameIds: string[], degrees: 90 | 180 | 270) => void;
+  batchShiftFrames: (frameIds: string[], direction: 'left' | 'right' | 'up' | 'down', amount?: number) => void;
   generateParticleAnimation: (config: {
     type: string;
     frameCount: number;

@@ -9,6 +9,7 @@ import SpriteSheetGenerator from '@/components/SpriteSheetGenerator';
 import CharacterSettings from '@/components/CharacterSettings';
 import CharacterTemplates from '@/components/CharacterTemplates';
 import ParticleGenerator from '@/components/ParticleGenerator';
+import TransformPanel from '@/components/TransformPanel';
 import { SaveManager } from '@/components/SaveManager';
 import { Palette, Layers, Film, Settings, Grid3X3, Sparkles, Undo2, Redo2, Save, HardDrive, RotateCcw, ChevronDown, ChevronUp, X, AlertTriangle } from 'lucide-react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
@@ -291,6 +292,9 @@ const Home = () => {
           </div>
           <div className="p-3 border-b border-[#0f3460] flex-shrink-0">
             <ActionPanel />
+          </div>
+          <div className="p-3 border-b border-[#0f3460] flex-shrink-0">
+            <TransformPanel />
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
             <CharacterTemplates onRequestApply={handleRequestApplyTemplate} />
