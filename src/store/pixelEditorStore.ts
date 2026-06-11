@@ -170,6 +170,11 @@ const createSampleCharacter = (): Character => {
 
 type StoreState = PixelEditorState & PixelEditorActions;
 
+const deepCloneCharacter = (c: Character): Character => JSON.parse(JSON.stringify(c));
+
+const STORAGE_KEY = 'pixel_animator_save';
+const MAX_HISTORY = 50;
+
 export const usePixelEditorStore = create<StoreState>((set, get) => ({
   character: createSampleCharacter(),
   currentActionId: null,
@@ -182,6 +187,9 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   fps: 8,
   selectedFrameIds: [],
   pixelColors: defaultColors,
+  history: [],
+  historyIndex: -1,
+  lastSavedTime: null,
 
   setCharacter: (character) => set({ character }),
 
@@ -265,6 +273,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       currentActionId: newAction.id,
       currentFrameId: newAction.frames[0].id,
     });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   deleteAction: (actionId) => {
@@ -279,6 +288,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       currentActionId: newCurrentId,
       currentFrameId: currentAction?.frames[0]?.id || null,
     });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   renameAction: (actionId, name) => {
@@ -287,6 +297,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     const action = newCharacter.actions.find((a) => a.id === actionId);
     if (action) action.name = name;
     set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   duplicateAction: (actionId) => {
@@ -308,6 +319,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     set({
       character: { ...character, actions: [...character.actions, newAction] },
     });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   addFrame: (actionId) => {
@@ -332,6 +344,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     }
 
     set({ character: newCharacter, currentFrameId: newFrame.id });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   deleteFrame: (frameId) => {
@@ -357,6 +370,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       character: newCharacter,
       currentFrameId: currentFrameId === frameId ? newFrameId : currentFrameId,
     });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   duplicateFrame: (frameId) => {
@@ -380,6 +394,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
 
     action.frames.splice(frameIndex + 1, 0, newFrame);
     set({ character: newCharacter, currentFrameId: newFrame.id });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   renameFrame: (frameId, name) => {
@@ -394,6 +409,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     if (frame) frame.name = name;
 
     set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   moveFrame: (fromIndex, toIndex) => {
@@ -408,6 +424,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     action.frames.splice(toIndex, 0, movedFrame);
 
     set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   setFrameDelay: (frameId, delay) => {
@@ -455,6 +472,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     }
 
     set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   batchDuplicateFrames: (frameIds) => {
@@ -483,6 +501,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     }
 
     set({ character: newCharacter, selectedFrameIds: newFrameIds });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   batchDeleteFrames: (frameIds) => {
@@ -501,6 +520,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     }
 
     set({ character: newCharacter, currentFrameId: newCurrentId, selectedFrameIds: [] });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   generateSpriteSheet: (actionId) => {
@@ -578,6 +598,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     }
 
     set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
   },
 
   setActionLoop: (actionId, loop) => {
@@ -586,6 +607,123 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     const action = newCharacter.actions.find((a) => a.id === actionId);
     if (action) action.loop = loop;
     set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  pushHistory: () => {
+    const { character, history, historyIndex } = get();
+    const newHistory = historyIndex < history.length - 1
+      ? history.slice(0, historyIndex + 1)
+      : [...history];
+
+    newHistory.push(deepCloneCharacter(character));
+
+    if (newHistory.length > MAX_HISTORY) {
+      newHistory.shift();
+    }
+
+    set({
+      history: newHistory,
+      historyIndex: newHistory.length - 1,
+    });
+  },
+
+  undo: () => {
+    const { history, historyIndex } = get();
+    if (historyIndex <= 0) return;
+
+    const newIndex = historyIndex - 1;
+    const restoredCharacter = deepCloneCharacter(history[newIndex]);
+
+    const firstAction = restoredCharacter.actions[0];
+    set({
+      character: restoredCharacter,
+      historyIndex: newIndex,
+      currentActionId: firstAction?.id || null,
+      currentFrameId: firstAction?.frames[0]?.id || null,
+    });
+  },
+
+  redo: () => {
+    const { history, historyIndex } = get();
+    if (historyIndex >= history.length - 1) return;
+
+    const newIndex = historyIndex + 1;
+    const restoredCharacter = deepCloneCharacter(history[newIndex]);
+
+    const firstAction = restoredCharacter.actions[0];
+    set({
+      character: restoredCharacter,
+      historyIndex: newIndex,
+      currentActionId: firstAction?.id || null,
+      currentFrameId: firstAction?.frames[0]?.id || null,
+    });
+  },
+
+  canUndo: () => {
+    const { historyIndex } = get();
+    return historyIndex > 0;
+  },
+
+  canRedo: () => {
+    const { history, historyIndex } = get();
+    return historyIndex < history.length - 1;
+  },
+
+  saveToLocal: () => {
+    const { character, pixelColors, fps, gridSize } = get();
+    const saveData = {
+      character,
+      pixelColors,
+      fps,
+      gridSize,
+      savedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
+      set({ lastSavedTime: Date.now() });
+    } catch (e) {
+      console.error('Failed to save:', e);
+    }
+  },
+
+  loadFromLocal: () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+
+      const data = JSON.parse(raw);
+      if (!data.character) return false;
+
+      const firstAction = data.character.actions[0];
+      set({
+        character: data.character,
+        pixelColors: data.pixelColors || defaultColors,
+        fps: data.fps || 8,
+        gridSize: data.gridSize || 20,
+        currentActionId: firstAction?.id || null,
+        currentFrameId: firstAction?.frames[0]?.id || null,
+        history: [],
+        historyIndex: -1,
+        lastSavedTime: data.savedAt || null,
+      });
+      return true;
+    } catch (e) {
+      console.error('Failed to load:', e);
+      return false;
+    }
+  },
+
+  resetCharacter: () => {
+    const newCharacter = createSampleCharacter();
+    const firstAction = newCharacter.actions[0];
+    set({
+      character: newCharacter,
+      currentActionId: firstAction.id,
+      currentFrameId: firstAction.frames[0].id,
+      history: [],
+      historyIndex: -1,
+    });
   },
 }));
 

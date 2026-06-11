@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import PixelCanvas from '@/components/PixelCanvas';
 import ColorPalette from '@/components/ColorPalette';
 import ActionPanel from '@/components/ActionPanel';
@@ -6,12 +6,138 @@ import FrameList from '@/components/FrameList';
 import AnimationPreview from '@/components/AnimationPreview';
 import SpriteSheetGenerator from '@/components/SpriteSheetGenerator';
 import CharacterSettings from '@/components/CharacterSettings';
-import { Palette, Layers, Film, Settings, Grid3X3 } from 'lucide-react';
+import { Palette, Layers, Film, Settings, Grid3X3, Undo2, Redo2, Save, FolderOpen, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import { usePixelEditorStore } from '@/store/pixelEditorStore';
 
 type TabType = 'preview' | 'spritesheet' | 'settings';
 
 const Home = () => {
   const [rightTab, setRightTab] = useState<TabType>('preview');
+  const [framePanelExpanded, setFramePanelExpanded] = useState(true);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  const {
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    pushHistory,
+    saveToLocal,
+    loadFromLocal,
+    resetCharacter,
+    lastSavedTime,
+    selectedTool,
+    setSelectedTool,
+    setIsPlaying,
+    isPlaying,
+    addFrame,
+    currentActionId,
+    duplicateFrame,
+    currentFrameId,
+    deleteFrame,
+    character,
+  } = usePixelEditorStore();
+
+  useEffect(() => {
+    pushHistory();
+  }, []);
+
+  const showSaveMsg = useCallback((msg: string) => {
+    setSaveMessage(msg);
+    setTimeout(() => setSaveMessage(null), 2000);
+  }, []);
+
+  const handleSave = useCallback(() => {
+    saveToLocal();
+    showSaveMsg('✓ 已保存到本地');
+  }, [saveToLocal, showSaveMsg]);
+
+  const handleLoad = useCallback(() => {
+    if (loadFromLocal()) {
+      showSaveMsg('✓ 已从本地加载');
+    } else {
+      showSaveMsg('✗ 无可用存档');
+    }
+  }, [loadFromLocal, showSaveMsg]);
+
+  const handleReset = useCallback(() => {
+    if (confirm('确定要重置所有内容吗？此操作不可撤销。')) {
+      resetCharacter();
+      setTimeout(() => pushHistory(), 0);
+      showSaveMsg('✓ 已重置');
+    }
+  }, [resetCharacter, pushHistory, showSaveMsg]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      if (isInput) {
+        if (e.key === 'Escape') {
+          (target as HTMLInputElement).blur();
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+        e.preventDefault();
+        handleLoad();
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        case 'b':
+          setSelectedTool('pencil');
+          break;
+        case 'e':
+          setSelectedTool('eraser');
+          break;
+        case 'g':
+          setSelectedTool('bucket');
+          break;
+        case ' ':
+          e.preventDefault();
+          setIsPlaying(!isPlaying);
+          break;
+        case 'n':
+          if (currentActionId) addFrame(currentActionId);
+          break;
+        case 'd':
+          if (currentFrameId) duplicateFrame(currentFrameId);
+          break;
+        case 'delete':
+        case 'backspace':
+          if (currentFrameId && character.actions.find(a => a.id === currentActionId)?.frames.length! > 1) {
+            if (confirm('确定删除当前帧？')) {
+              deleteFrame(currentFrameId);
+            }
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo, handleSave, handleLoad, setSelectedTool, setIsPlaying, isPlaying, addFrame, currentActionId, duplicateFrame, currentFrameId, deleteFrame, character]);
 
   const rightTabs: { id: TabType; label: string; icon: any }[] = [
     { id: 'preview', label: '预览', icon: Film },
@@ -20,7 +146,13 @@ const Home = () => {
   ];
 
   return (
-    <div className="h-screen flex flex-col bg-[#1a1a2e] text-gray-200 overflow-hidden">
+    <div className="h-screen flex flex-col bg-[#1a1a2e] text-gray-200 overflow-hidden relative">
+      {saveMessage && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-[#2ecc71] text-white rounded shadow-lg text-sm animate-pulse">
+          {saveMessage}
+        </div>
+      )}
+
       <header className="flex-shrink-0 bg-[#16213e] border-b border-[#0f3460] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-[#e94560] rounded flex items-center justify-center">
@@ -31,10 +163,57 @@ const Home = () => {
             <p className="text-xs text-gray-500">像素动画帧管理工具</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-xs text-gray-500">
-            <span className="text-[#e94560]">●</span> 独立游戏开发者专用
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-[#0f3460] rounded p-1 mr-2">
+            <button
+              onClick={undo}
+              disabled={!canUndo()}
+              className="p-1.5 rounded text-gray-300 hover:bg-[#16213e] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="撤销 (Ctrl+Z)"
+            >
+              <Undo2 size={16} />
+            </button>
+            <button
+              onClick={redo}
+              disabled={!canRedo()}
+              className="p-1.5 rounded text-gray-300 hover:bg-[#16213e] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="重做 (Ctrl+Y)"
+            >
+              <Redo2 size={16} />
+            </button>
           </div>
+
+          <div className="flex items-center gap-1 bg-[#0f3460] rounded p-1 mr-2">
+            <button
+              onClick={handleSave}
+              className="p-1.5 rounded text-[#2ecc71] hover:bg-[#16213e] transition-colors flex items-center gap-1"
+              title="保存 (Ctrl+S)"
+            >
+              <Save size={16} />
+              <span className="text-xs hidden sm:inline">保存</span>
+            </button>
+            <button
+              onClick={handleLoad}
+              className="p-1.5 rounded text-[#3498db] hover:bg-[#16213e] transition-colors flex items-center gap-1"
+              title="加载 (Ctrl+O)"
+            >
+              <FolderOpen size={16} />
+              <span className="text-xs hidden sm:inline">加载</span>
+            </button>
+            <button
+              onClick={handleReset}
+              className="p-1.5 rounded text-gray-400 hover:bg-[#16213e] hover:text-[#e74c3c] transition-colors"
+              title="重置"
+            >
+              <RotateCcw size={16} />
+            </button>
+          </div>
+
+          {lastSavedTime && (
+            <div className="text-xs text-gray-500 hidden md:block">
+              上次保存: {new Date(lastSavedTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </div>
+          )}
         </div>
       </header>
 
@@ -55,8 +234,38 @@ const Home = () => {
           <div className="flex-1 p-4 overflow-hidden">
             <PixelCanvas />
           </div>
-          <div className="h-48 flex-shrink-0 border-t border-[#0f3460] p-3 overflow-hidden">
-            <FrameList />
+          <div
+            className={`border-t border-[#0f3460] transition-all duration-300 ease-in-out overflow-hidden ${
+              framePanelExpanded ? 'h-auto min-h-[160px] max-h-[50vh]' : 'h-[44px]'
+            }`}
+          >
+            <div
+              className="flex items-center justify-between px-3 py-2 bg-[#16213e] border-b border-[#0f3460] transition-colors hover:bg-[#0f3460]"
+            >
+              <div className="flex items-center gap-2">
+                <Layers size={14} className="text-[#e94560]" />
+                <span className="text-xs font-medium text-gray-300 pixel-font">帧序列</span>
+                <span className="text-[10px] text-gray-500">
+                  ({character.actions.find(a => a.id === currentActionId)?.frames.length || 0} 帧)
+                </span>
+              </div>
+              <button
+                onClick={() => setFramePanelExpanded(!framePanelExpanded)}
+                className="p-1 rounded hover:bg-[#1a1a2e] text-gray-400 hover:text-white transition-colors"
+                title={framePanelExpanded ? '收起帧序列' : '展开帧序列'}
+              >
+                {framePanelExpanded ? (
+                  <ChevronDown size={16} />
+                ) : (
+                  <ChevronUp size={16} />
+                )}
+              </button>
+            </div>
+            {framePanelExpanded && (
+              <div className="p-3 pt-2 overflow-y-auto" style={{ maxHeight: 'calc(50vh - 44px - 10px)' }}>
+                <FrameList />
+              </div>
+            )}
           </div>
         </main>
 

@@ -20,7 +20,34 @@ const PixelCanvas = () => {
     setGridSize,
     setShowGrid,
     setSelectedTool,
+    pushHistory,
   } = usePixelEditorStore();
+
+  const isDrawingRef = useRef(false);
+  const hasChangedRef = useRef(false);
+  const previousPixelsRef = useRef<string>('');
+
+  const saveStateBeforeDraw = useCallback(() => {
+    const state = usePixelEditorStore.getState();
+    const action = state.character.actions.find((a) => a.id === state.currentActionId);
+    const frame = action?.frames.find((f) => f.id === state.currentFrameId);
+    if (frame) {
+      previousPixelsRef.current = JSON.stringify(frame.pixels);
+    }
+  }, []);
+
+  const commitHistoryIfChanged = useCallback(() => {
+    if (hasChangedRef.current && previousPixelsRef.current) {
+      const state = usePixelEditorStore.getState();
+      const action = state.character.actions.find((a) => a.id === state.currentActionId);
+      const frame = action?.frames.find((f) => f.id === state.currentFrameId);
+      if (frame && JSON.stringify(frame.pixels) !== previousPixelsRef.current) {
+        state.pushHistory();
+      }
+    }
+    hasChangedRef.current = false;
+    previousPixelsRef.current = '';
+  }, []);
 
   const currentColorIndex = pixelColors.indexOf(usePixelEditorStore.getState().currentColor);
 
@@ -107,10 +134,13 @@ const PixelCanvas = () => {
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     setIsDrawing(true);
+    isDrawingRef.current = true;
+    saveStateBeforeDraw();
     const pos = getPixelPos(e);
     setLastPos(pos);
     const colorIdx = pixelColors.indexOf(usePixelEditorStore.getState().currentColor);
     setPixel(pos.x, pos.y, colorIdx);
+    hasChangedRef.current = true;
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -129,6 +159,7 @@ const PixelCanvas = () => {
         const y = Math.round(lastPos.y + dy * t);
         setPixel(x, y, colorIdx);
       }
+      hasChangedRef.current = true;
     }
 
     setLastPos(pos);
@@ -136,11 +167,17 @@ const PixelCanvas = () => {
 
   const handleMouseUp = () => {
     setIsDrawing(false);
+    isDrawingRef.current = false;
     setLastPos(null);
+    commitHistoryIfChanged();
   };
 
   const handleMouseLeave = () => {
+    if (isDrawingRef.current) {
+      commitHistoryIfChanged();
+    }
     setIsDrawing(false);
+    isDrawingRef.current = false;
     setLastPos(null);
   };
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
 import { Plus, Trash2, Copy, Edit3, Check, X, Play, Repeat } from 'lucide-react';
 
@@ -18,6 +18,40 @@ const ActionPanel = () => {
   const [newActionName, setNewActionName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        if (isAdding) {
+          setIsAdding(false);
+          setNewActionName('');
+        }
+        if (editingId) {
+          setEditingId(null);
+          setEditingName('');
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isAdding, editingId]);
+
+  useEffect(() => {
+    if (isAdding && addInputRef.current) {
+      addInputRef.current.focus();
+    }
+  }, [isAdding]);
+
+  useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+    }
+  }, [editingId]);
 
   const handleAddAction = () => {
     if (newActionName.trim()) {
@@ -48,7 +82,7 @@ const ActionPanel = () => {
   const currentAction = character.actions.find((a) => a.id === currentActionId);
 
   return (
-    <div className="bg-[#16213e] rounded-lg border border-[#0f3460] p-3">
+    <div ref={containerRef} className="bg-[#16213e] rounded-lg border border-[#0f3460] p-3">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium text-gray-300 pixel-font text-xs">动作列表</h3>
         <button
@@ -63,18 +97,19 @@ const ActionPanel = () => {
       {isAdding && (
         <div className="flex items-center gap-2 mb-3 p-2 bg-[#0f3460] rounded">
           <input
+            ref={addInputRef}
             type="text"
             value={newActionName}
             onChange={(e) => setNewActionName(e.target.value)}
             placeholder="动作名称..."
             className="flex-1 px-2 py-1 text-sm bg-[#1a1a2e] border border-[#0f3460] rounded text-gray-200 focus:outline-none focus:border-[#e94560]"
-            autoFocus
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleAddAction();
               if (e.key === 'Escape') {
                 setIsAdding(false);
                 setNewActionName('');
               }
+              e.stopPropagation();
             }}
           />
           <button
@@ -109,14 +144,15 @@ const ActionPanel = () => {
             {editingId === action.id ? (
               <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
                 <input
+                  ref={editInputRef}
                   type="text"
                   value={editingName}
                   onChange={(e) => setEditingName(e.target.value)}
                   className="flex-1 px-1 py-0.5 text-sm bg-[#1a1a2e] border border-[#e94560] rounded text-gray-200 focus:outline-none"
-                  autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleSaveEdit();
                     if (e.key === 'Escape') handleCancelEdit();
+                    e.stopPropagation();
                   }}
                 />
                 <button onClick={handleSaveEdit} className="p-0.5 text-[#2ecc71]">

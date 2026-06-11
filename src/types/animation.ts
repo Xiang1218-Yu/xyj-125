@@ -32,6 +32,9 @@ export interface PixelEditorState {
   fps: number;
   selectedFrameIds: string[];
   pixelColors: string[];
+  history: Character[];
+  historyIndex: number;
+  lastSavedTime: number | null;
 }
 
 export interface PixelEditorActions {
@@ -68,4 +71,12 @@ export interface PixelEditorActions {
   removeColor: (index: number) => void;
   setCharacterSize: (width: number, height: number) => void;
   setActionLoop: (actionId: string, loop: boolean) => void;
+  pushHistory: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+  saveToLocal: () => void;
+  loadFromLocal: () => boolean;
+  resetCharacter: () => void;
 }
