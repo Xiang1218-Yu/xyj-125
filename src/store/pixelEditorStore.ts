@@ -572,12 +572,18 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     const { character, currentActionId } = get();
     if (!currentActionId) return;
 
-    const newCharacter = { ...character };
-    const action = newCharacter.actions.find((a) => a.id === currentActionId);
-    if (!action) return;
-
-    const frame = action.frames.find((f) => f.id === frameId);
-    if (frame) frame.delay = delay;
+    const newCharacter: Character = {
+      ...character,
+      actions: character.actions.map((a) => {
+        if (a.id !== currentActionId) return a;
+        return {
+          ...a,
+          frames: a.frames.map((f) =>
+            f.id === frameId ? { ...f, delay } : f
+          ),
+        };
+      }),
+    };
 
     set({ character: newCharacter });
   },
