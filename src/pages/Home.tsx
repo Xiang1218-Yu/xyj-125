@@ -11,6 +11,7 @@ import CharacterTemplates from '@/components/CharacterTemplates';
 import ParticleGenerator from '@/components/ParticleGenerator';
 import TransformPanel from '@/components/TransformPanel';
 import { SaveManager } from '@/components/SaveManager';
+import FrameTweener from '@/components/FrameTweener';
 import { Palette, Layers, Film, Settings, Grid3X3, Sparkles, Undo2, Redo2, Save, HardDrive, RotateCcw, ChevronDown, ChevronUp, X, AlertTriangle } from 'lucide-react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
 
@@ -376,7 +377,12 @@ const Home = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto p-3">
-            {rightTab === 'preview' && <AnimationPreview />}
+            {rightTab === 'preview' && (
+              <div className="space-y-3">
+                <AnimationPreview />
+                <FrameTweener />
+              </div>
+            )}
             {rightTab === 'spritesheet' && <SpriteSheetGenerator />}
             {rightTab === 'particle' && <ParticleGenerator />}
             {rightTab === 'settings' && (

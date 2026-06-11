@@ -1,6 +1,8 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
-import { Play, Pause, SkipBack, SkipForward, RotateCcw, Maximize2, ZoomIn, ZoomOut } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, RotateCcw, Maximize2, ZoomIn, ZoomOut, Sparkles } from 'lucide-react';
+import { buildTweenPlaybackFrames } from '@/utils/frameTweener';
+import type { Frame } from '@/types/animation';
 
 const AnimationPreview = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -20,30 +22,39 @@ const AnimationPreview = () => {
     setFps,
     pixelColors,
     setCurrentFrame,
+    tweenEnabled,
+    tweenMode,
+    tweenSteps,
+    tweenFrameIds,
   } = usePixelEditorStore();
 
   const action = character.actions.find((a) => a.id === currentActionId);
-  const frames = action?.frames || [];
+
+  const originalFrames = useMemo(() => action?.frames || [], [action]);
+
+  const playbackData = useMemo(() => {
+    if (!tweenEnabled || originalFrames.length < 2) {
+      return {
+        frames: originalFrames,
+        originalIndices: originalFrames.map((_, i) => i),
+      };
+    }
+    return buildTweenPlaybackFrames(
+      originalFrames,
+      tweenFrameIds,
+      tweenSteps,
+      tweenMode,
+      pixelColors,
+      character.width,
+      character.height
+    );
+  }, [tweenEnabled, originalFrames, tweenFrameIds, tweenSteps, tweenMode, pixelColors, character.width, character.height]);
+
+  const playbackFrames = playbackData.frames;
+  const originalIndices = playbackData.originalIndices;
 
   const drawFrame = useCallback(
-    (frameIndex: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas || !action || frames.length === 0) return;
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const frame = frames[frameIndex];
-      if (!frame) return;
-
-      const scale = previewScale;
-      const w = character.width * scale;
-      const h = character.height * scale;
-
-      canvas.width = w;
-      canvas.height = h;
-      ctx.imageSmoothingEnabled = false;
-
+    (frame: Frame, scale: number, ctx: CanvasRenderingContext2D, w: number, h: number) => {
       ctx.clearRect(0, 0, w, h);
 
       for (let y = 0; y < character.height; y++) {
@@ -72,7 +83,31 @@ const AnimationPreview = () => {
         }
       }
     },
-    [action, frames, character, pixelColors, previewScale]
+    [character, pixelColors]
+  );
+
+  const drawFrameAtIndex = useCallback(
+    (index: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const frame = playbackFrames[index];
+      if (!frame) return;
+
+      const scale = previewScale;
+      const w = character.width * scale;
+      const h = character.height * scale;
+
+      canvas.width = w;
+      canvas.height = h;
+      ctx.imageSmoothingEnabled = false;
+
+      drawFrame(frame, scale, ctx, w, h);
+    },
+    [playbackFrames, previewScale, character, drawFrame]
   );
 
   const animate = useCallback(
@@ -81,7 +116,7 @@ const AnimationPreview = () => {
       const deltaTime = timestamp - lastTimeRef.current;
       lastTimeRef.current = timestamp;
 
-      if (frames.length === 0 || !action) {
+      if (playbackFrames.length === 0 || !action) {
         animationRef.current = requestAnimationFrame(animate);
         return;
       }
@@ -93,7 +128,7 @@ const AnimationPreview = () => {
         elapsedRef.current = 0;
         setCurrentFrameIndex((prev) => {
           const next = prev + 1;
-          if (next >= frames.length) {
+          if (next >= playbackFrames.length) {
             if (action.loop) {
               return 0;
             } else {
@@ -107,11 +142,11 @@ const AnimationPreview = () => {
 
       animationRef.current = requestAnimationFrame(animate);
     },
-    [frames, fps, action, setIsPlaying]
+    [playbackFrames, fps, action, setIsPlaying]
   );
 
   useEffect(() => {
-    if (isPlaying && frames.length > 0) {
+    if (isPlaying && playbackFrames.length > 0) {
       lastTimeRef.current = 0;
       elapsedRef.current = 0;
       animationRef.current = requestAnimationFrame(animate);
@@ -126,27 +161,27 @@ const AnimationPreview = () => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isPlaying, frames.length, animate]);
+  }, [isPlaying, playbackFrames.length, animate]);
 
   useEffect(() => {
-    if (currentFrameIndex < frames.length) {
-      drawFrame(currentFrameIndex);
+    if (currentFrameIndex < playbackFrames.length) {
+      drawFrameAtIndex(currentFrameIndex);
     }
-  }, [currentFrameIndex, drawFrame, frames.length]);
+  }, [currentFrameIndex, drawFrameAtIndex, playbackFrames.length]);
 
   useEffect(() => {
-    if (!isPlaying && frames.length > 0) {
-      const idx = Math.min(currentFrameIndex, frames.length - 1);
-      drawFrame(idx);
+    if (!isPlaying && playbackFrames.length > 0) {
+      const idx = Math.min(currentFrameIndex, playbackFrames.length - 1);
+      drawFrameAtIndex(idx);
     }
-  }, [frames, isPlaying, currentFrameIndex, drawFrame]);
+  }, [playbackFrames, isPlaying, currentFrameIndex, drawFrameAtIndex]);
 
   useEffect(() => {
     setCurrentFrameIndex(0);
   }, [currentActionId]);
 
   const handlePlayPause = () => {
-    if (frames.length === 0) return;
+    if (playbackFrames.length === 0) return;
     if (!isPlaying) {
       setCurrentFrameIndex(0);
     }
@@ -157,13 +192,13 @@ const AnimationPreview = () => {
     if (isPlaying) setIsPlaying(false);
     setCurrentFrameIndex((prev) => {
       const next = prev - 1;
-      return next < 0 ? frames.length - 1 : next;
+      return next < 0 ? playbackFrames.length - 1 : next;
     });
   };
 
   const handleNextFrame = () => {
     if (isPlaying) setIsPlaying(false);
-    setCurrentFrameIndex((prev) => (prev + 1) % frames.length);
+    setCurrentFrameIndex((prev) => (prev + 1) % playbackFrames.length);
   };
 
   const handleReset = () => {
@@ -172,10 +207,13 @@ const AnimationPreview = () => {
   };
 
   const handleCanvasClick = () => {
-    if (frames[currentFrameIndex]) {
-      setCurrentFrame(frames[currentFrameIndex].id);
+    const origIdx = originalIndices[currentFrameIndex];
+    if (origIdx !== undefined && originalFrames[origIdx]) {
+      setCurrentFrame(originalFrames[origIdx].id);
     }
   };
+
+  const currentOriginalIndex = originalIndices[currentFrameIndex];
 
   return (
     <div className="bg-[#16213e] rounded-lg border border-[#0f3460] p-3">
@@ -197,6 +235,16 @@ const AnimationPreview = () => {
           </button>
         </div>
       </div>
+
+      {tweenEnabled && (
+        <div className="flex items-center gap-1.5 mb-2 px-2 py-1.5 bg-[#9b59b6]/20 rounded border border-[#9b59b6]/30">
+          <Sparkles size={12} className="text-[#9b59b6]" />
+          <span className="text-[10px] text-[#9b59b6]">帧过渡已启用</span>
+          <span className="text-[10px] text-gray-500 ml-auto">
+            {playbackFrames.length} 帧 (含过渡)
+          </span>
+        </div>
+      )}
 
       <div
         className="flex items-center justify-center bg-[#1a1a2e] rounded border border-[#0f3460] p-4 mb-3"
@@ -227,7 +275,7 @@ const AnimationPreview = () => {
         </button>
         <button
           onClick={handlePlayPause}
-          disabled={frames.length === 0}
+          disabled={playbackFrames.length === 0}
           className="p-3 rounded-full bg-[#e94560] text-white hover:bg-[#d63d55] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           title={isPlaying ? '暂停' : '播放'}
         >
@@ -262,9 +310,12 @@ const AnimationPreview = () => {
           />
         </div>
         <div className="text-xs text-gray-500">
-          {frames.length > 0 ? (
+          {playbackFrames.length > 0 ? (
             <span>
-              {currentFrameIndex + 1} / {frames.length}
+              {currentFrameIndex + 1} / {playbackFrames.length}
+              {tweenEnabled && currentOriginalIndex !== undefined && (
+                <span className="text-gray-600 ml-1">(原帧 #{currentOriginalIndex + 1})</span>
+              )}
             </span>
           ) : (
             '无帧'
@@ -272,23 +323,31 @@ const AnimationPreview = () => {
         </div>
       </div>
 
-      {frames.length > 0 && (
+      {originalFrames.length > 0 && (
         <div className="mt-3 flex gap-1 overflow-x-auto pb-1">
-          {frames.map((frame, index) => (
+          {originalFrames.map((frame, index) => (
             <button
               key={frame.id}
               onClick={() => {
                 if (isPlaying) setIsPlaying(false);
-                setCurrentFrameIndex(index);
+                const playbackIdx = originalIndices.indexOf(index);
+                if (playbackIdx >= 0) {
+                  setCurrentFrameIndex(playbackIdx);
+                }
               }}
-              className={`flex-shrink-0 w-8 h-8 rounded border transition-colors ${
-                currentFrameIndex === index
+              className={`flex-shrink-0 w-8 h-8 rounded border transition-colors relative ${
+                currentOriginalIndex === index
                   ? 'border-[#e94560] bg-[#e94560]/20'
+                  : tweenFrameIds.includes(frame.id) && tweenEnabled
+                  ? 'border-[#9b59b6] bg-[#9b59b6]/10'
                   : 'border-[#0f3460] hover:border-gray-500'
               }`}
               title={frame.name}
             >
               <span className="text-[10px] text-gray-400">{index + 1}</span>
+              {tweenFrameIds.includes(frame.id) && tweenEnabled && (
+                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#9b59b6] rounded-full" />
+              )}
             </button>
           ))}
         </div>

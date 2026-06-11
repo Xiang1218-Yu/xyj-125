@@ -1,3 +1,5 @@
+export type TweenMode = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'easeInQuad' | 'easeOutQuad' | 'easeInOutQuad';
+
 export interface Layer {
   id: string;
   name: string;
@@ -72,6 +74,10 @@ export interface PixelEditorState {
   onionSkinPrevFrames: number;
   onionSkinNextFrames: number;
   onionSkinOpacity: number;
+  tweenEnabled: boolean;
+  tweenMode: TweenMode;
+  tweenSteps: number;
+  tweenFrameIds: string[];
 }
 
 export interface PixelEditorActions {
@@ -168,4 +174,11 @@ export interface PixelEditorActions {
     spread?: number;
     emissionRate?: number;
   }) => boolean;
+  setTweenEnabled: (enabled: boolean) => void;
+  setTweenMode: (mode: TweenMode) => void;
+  setTweenSteps: (steps: number) => void;
+  toggleTweenFrame: (frameId: string) => void;
+  setTweenFrameIds: (frameIds: string[]) => void;
+  clearTweenFrames: () => void;
+  getTweenFrames: (actionId: string) => Frame[];
 }

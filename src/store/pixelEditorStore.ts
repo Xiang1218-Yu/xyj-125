@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import type { Character, Frame, Action, Layer, PixelEditorState, PixelEditorActions, SaveEntry, SaveMeta, SaveData } from '@/types/animation';
+import type { Character, Frame, Action, Layer, PixelEditorState, PixelEditorActions, SaveEntry, SaveMeta, SaveData, TweenMode } from '@/types/animation';
 import { characterTemplates } from '@/data/characterTemplates';
 import { generateParticleFrames } from '@/utils/particleEngine';
 import { DEFAULT_PARTICLE_CONFIGS } from '@/types/particle';
 import type { ParticleConfig, ParticleType } from '@/types/particle';
+import { buildTweenPlaybackFrames } from '@/utils/frameTweener';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
@@ -258,6 +259,10 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   onionSkinPrevFrames: 1,
   onionSkinNextFrames: 1,
   onionSkinOpacity: 0.3,
+  tweenEnabled: false,
+  tweenMode: 'linear' as TweenMode,
+  tweenSteps: 3,
+  tweenFrameIds: [],
 
   applyTemplate: (templateId) => {
     const template = characterTemplates.find((t) => t.id === templateId);
@@ -1607,6 +1612,42 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
 
     setTimeout(() => get().pushHistory(), 0);
     return true;
+  },
+
+  setTweenEnabled: (enabled) => set({ tweenEnabled: enabled }),
+
+  setTweenMode: (mode) => set({ tweenMode: mode }),
+
+  setTweenSteps: (steps) => set({ tweenSteps: Math.max(1, Math.min(20, steps)) }),
+
+  toggleTweenFrame: (frameId) => {
+    const { tweenFrameIds } = get();
+    if (tweenFrameIds.includes(frameId)) {
+      set({ tweenFrameIds: tweenFrameIds.filter((id) => id !== frameId) });
+    } else {
+      set({ tweenFrameIds: [...tweenFrameIds, frameId] });
+    }
+  },
+
+  setTweenFrameIds: (frameIds) => set({ tweenFrameIds: frameIds }),
+
+  clearTweenFrames: () => set({ tweenFrameIds: [] }),
+
+  getTweenFrames: (actionId) => {
+    const { character, tweenFrameIds, tweenSteps, tweenMode, pixelColors } = get();
+    const action = character.actions.find((a) => a.id === actionId);
+    if (!action || action.frames.length < 2) return action?.frames || [];
+
+    const { frames } = buildTweenPlaybackFrames(
+      action.frames,
+      tweenFrameIds,
+      tweenSteps,
+      tweenMode,
+      pixelColors,
+      character.width,
+      character.height
+    );
+    return frames;
   },
 }));
 
