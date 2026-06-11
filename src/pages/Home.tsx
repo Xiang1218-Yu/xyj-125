@@ -9,7 +9,7 @@ import SpriteSheetGenerator from '@/components/SpriteSheetGenerator';
 import CharacterSettings from '@/components/CharacterSettings';
 import CharacterTemplates from '@/components/CharacterTemplates';
 import { SaveManager } from '@/components/SaveManager';
-import { Palette, Layers, Film, Settings, Grid3X3, Undo2, Redo2, Save, HardDrive, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Palette, Layers, Film, Settings, Grid3X3, Undo2, Redo2, Save, HardDrive, RotateCcw, ChevronDown, ChevronUp, X, AlertTriangle } from 'lucide-react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
 
 type TabType = 'preview' | 'spritesheet' | 'settings';
@@ -19,6 +19,8 @@ const Home = () => {
   const [framePanelExpanded, setFramePanelExpanded] = useState(true);
   const [saveMessage, setSaveMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [saveManagerOpen, setSaveManagerOpen] = useState(false);
+  const [templateConfirmOpen, setTemplateConfirmOpen] = useState(false);
+  const [pendingTemplate, setPendingTemplate] = useState<{ id: string; name: string } | null>(null);
   const autoSaveTimerRef = useRef<number | null>(null);
 
   const {
@@ -46,6 +48,7 @@ const Home = () => {
     deleteFrame,
     character,
     pushHistory,
+    applyTemplate,
   } = usePixelEditorStore();
 
   const showToast = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
@@ -72,6 +75,27 @@ const Home = () => {
       showToast('✓ 已重置', 'success');
     }
   }, [resetCharacter, showToast]);
+
+  const handleRequestApplyTemplate = useCallback((templateId: string, templateName: string) => {
+    setPendingTemplate({ id: templateId, name: templateName });
+    setTemplateConfirmOpen(true);
+  }, []);
+
+  const handleConfirmApplyTemplate = useCallback(() => {
+    if (pendingTemplate) {
+      const success = applyTemplate(pendingTemplate.id);
+      if (success) {
+        showToast(`✓ 已应用模板 \"${pendingTemplate.name}\"`, 'success');
+      }
+    }
+    setTemplateConfirmOpen(false);
+    setPendingTemplate(null);
+  }, [pendingTemplate, applyTemplate, showToast]);
+
+  const handleCancelApplyTemplate = useCallback(() => {
+    setTemplateConfirmOpen(false);
+    setPendingTemplate(null);
+  }, []);
 
   useEffect(() => {
     if (!autoSave || !currentSaveName) {
@@ -260,17 +284,19 @@ const Home = () => {
 
       <div className="flex-1 flex overflow-hidden">
         <aside className="w-64 flex-shrink-0 bg-[#16213e] border-r border-[#0f3460] flex flex-col overflow-hidden">
-          <div className="p-3 border-b border-[#0f3460]">
+          <div className="p-3 border-b border-[#0f3460] flex-shrink-0">
             <CharacterSettings />
           </div>
-          <div className="p-3 border-b border-[#0f3460]">
+          <div className="p-3 border-b border-[#0f3460] flex-shrink-0">
             <ActionPanel />
           </div>
-          <div className="p-3 border-b border-[#0f3460]">
-            <CharacterTemplates />
-          </div>
-          <div className="p-3 flex-1 overflow-hidden">
-            <ColorPalette />
+          <div className="flex-1 min-h-0 flex flex-col p-3 gap-3 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <CharacterTemplates onRequestApply={handleRequestApplyTemplate} />
+            </div>
+            <div className="flex-shrink-0 overflow-y-auto max-h-[35vh]">
+              <ColorPalette />
+            </div>
           </div>
         </aside>
 
@@ -390,6 +416,55 @@ const Home = () => {
           </div>
         </aside>
       </div>
+
+      {templateConfirmOpen && pendingTemplate && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#16213e] border border-[#0f3460] rounded-lg shadow-2xl w-[400px] max-w-[90vw] overflow-hidden animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#0f3460]">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={18} className="text-[#f39c12]" />
+                <h3 className="text-sm font-medium text-gray-200 pixel-font">确认应用模板</h3>
+              </div>
+              <button
+                onClick={handleCancelApplyTemplate}
+                className="p-1 rounded text-gray-400 hover:bg-[#0f3460] hover:text-white transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-4 py-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#f39c12]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <AlertTriangle size={20} className="text-[#f39c12]" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-gray-300 leading-relaxed">
+                    确定要应用模板 <span className="text-[#e94560] font-medium">"{pendingTemplate.name}"</span> 吗？
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                    当前角色的所有内容（动作、帧、图层）将被替换为模板预设。此操作可通过"撤销"恢复。
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 px-4 py-3 bg-[#0f3460]/50 border-t border-[#0f3460]">
+              <button
+                onClick={handleCancelApplyTemplate}
+                className="flex-1 py-2 px-4 bg-[#1a1a2e] text-gray-300 rounded border border-[#0f3460] text-sm hover:bg-[#0f3460] transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmApplyTemplate}
+                className="flex-1 py-2 px-4 bg-[#e94560] text-white rounded text-sm hover:bg-[#d63d55] transition-colors flex items-center justify-center gap-1.5"
+              >
+                <AlertTriangle size={14} />
+                确认应用
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <SaveManager
         isOpen={saveManagerOpen}

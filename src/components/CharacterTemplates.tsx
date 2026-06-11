@@ -1,7 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
 import { characterTemplates, templateCategories, type CharacterTemplate } from '@/data/characterTemplates';
-import { Sparkles, Sword, Wand2, User, Skull, LayoutGrid, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { Sparkles, Sword, Wand2, User, Skull, LayoutGrid, ChevronDown, ChevronUp } from 'lucide-react';
+
+interface CharacterTemplatesProps {
+  onRequestApply: (templateId: string, templateName: string) => void;
+}
 
 const TemplatePreview = ({ template, size = 4 }: { template: CharacterTemplate; size?: number }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -59,36 +63,18 @@ const getCategoryIcon = (iconName: string) => {
   }
 };
 
-const CharacterTemplates = () => {
+const CharacterTemplates = ({ onRequestApply }: CharacterTemplatesProps) => {
   const [expanded, setExpanded] = useState(true);
   const [activeCategory, setActiveCategory] = useState<typeof templateCategories[number]['id']>('all');
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-
-  const applyTemplate = usePixelEditorStore((state) => state.applyTemplate);
 
   const filteredTemplates = activeCategory === 'all'
     ? characterTemplates
     : characterTemplates.filter((t) => t.category === activeCategory);
 
-  const handleApplyClick = (templateId: string) => {
-    setConfirmingId(templateId);
-  };
-
-  const handleConfirmApply = (templateId: string) => {
-    const success = applyTemplate(templateId);
-    if (success) {
-      setConfirmingId(null);
-    }
-  };
-
-  const handleCancelConfirm = () => {
-    setConfirmingId(null);
-  };
-
   return (
-    <div className="bg-[#16213e] rounded-lg border border-[#0f3460]">
+    <div className="bg-[#16213e] rounded-lg border border-[#0f3460] flex flex-col overflow-hidden">
       <div
-        className="flex items-center justify-between p-3 cursor-pointer transition-colors hover:bg-[#0f3460]/50"
+        className="flex items-center justify-between p-3 cursor-pointer transition-colors hover:bg-[#0f3460]/50 flex-shrink-0"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-2">
@@ -103,8 +89,8 @@ const CharacterTemplates = () => {
       </div>
 
       {expanded && (
-        <div className="px-3 pb-3 space-y-3">
-          <div className="flex flex-wrap gap-1">
+        <div className="flex-1 overflow-y-auto min-h-0 px-3 pb-3 space-y-3">
+          <div className="flex flex-wrap gap-1 flex-shrink-0 sticky top-0 bg-[#16213e] pt-2 pb-2 z-10">
             {templateCategories.map((cat) => {
               const Icon = getCategoryIcon(cat.icon);
               return (
@@ -138,38 +124,12 @@ const CharacterTemplates = () => {
                     <p className="text-xs font-medium text-gray-200 truncate">{template.name}</p>
                     <p className="text-[9px] text-gray-500 truncate">{template.description}</p>
                   </div>
-                  {confirmingId === template.id ? (
-                    <div className="flex gap-1 w-full">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleConfirmApply(template.id);
-                        }}
-                        className="flex-1 py-1 px-2 bg-[#2ecc71] text-white rounded text-[10px] hover:bg-[#27ae60] transition-colors flex items-center justify-center gap-1"
-                      >
-                        <Check size={10} /> 确认
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCancelConfirm();
-                        }}
-                        className="flex-1 py-1 px-2 bg-[#e74c3c] text-white rounded text-[10px] hover:bg-[#c0392b] transition-colors"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleApplyClick(template.id);
-                      }}
-                      className="w-full py-1 px-2 bg-[#e94560] text-white rounded text-[10px] hover:bg-[#d63d55] transition-colors opacity-80 group-hover:opacity-100"
-                    >
-                      应用模板
-                    </button>
-                  )}
+                  <button
+                    onClick={() => onRequestApply(template.id, template.name)}
+                    className="w-full py-1 px-2 bg-[#e94560] text-white rounded text-[10px] hover:bg-[#d63d55] transition-colors opacity-80 group-hover:opacity-100"
+                  >
+                    应用模板
+                  </button>
                 </div>
               </div>
             ))}
