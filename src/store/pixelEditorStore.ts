@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import type { Character, Frame, Action, Layer, PixelEditorState, PixelEditorActions, SaveEntry, SaveMeta, SaveData } from '@/types/animation';
 import { characterTemplates } from '@/data/characterTemplates';
+import { generateParticleFrames } from '@/utils/particleEngine';
+import { DEFAULT_PARTICLE_CONFIGS } from '@/types/particle';
+import type { ParticleConfig, ParticleType } from '@/types/particle';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
@@ -1199,6 +1202,84 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   setOnionSkinNextFrames: (count) => set({ onionSkinNextFrames: Math.max(0, count) }),
 
   setOnionSkinOpacity: (opacity) => set({ onionSkinOpacity: Math.max(0.1, Math.min(0.9, opacity)) }),
+
+  generateParticleAnimation: (config) => {
+    const { character } = get();
+    const {
+      type,
+      frameCount,
+      actionName,
+      insertMode = 'newAction',
+      ...customParams
+    } = config;
+
+    const particleType = type as ParticleType;
+    const defaultConfig = DEFAULT_PARTICLE_CONFIGS[particleType];
+    if (!defaultConfig) return false;
+
+    const particleConfig: ParticleConfig = {
+      ...defaultConfig,
+      width: character.width,
+      height: character.height,
+      frameCount,
+      ...customParams,
+    } as ParticleConfig;
+
+    const frames = generateParticleFrames(particleConfig);
+    if (frames.length === 0) return false;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+
+    const actionFrames: Frame[] = frames.map((frame, index) => {
+      const layer: Layer = {
+        id: generateId(),
+        name: 'Particle Layer',
+        pixels: frame.pixels.map((row) => [...row]),
+        visible: true,
+        locked: false,
+        opacity: 1,
+      };
+      return {
+        id: generateId(),
+        name: `${particleType}_${String(index + 1).padStart(3, '0')}`,
+        layers: [layer],
+        delay: 100,
+      };
+    });
+
+    if (insertMode === 'newAction') {
+      const name = actionName || particleType;
+      const newAction: Action = {
+        id: generateId(),
+        name,
+        frames: actionFrames,
+        loop: true,
+      };
+      newCharacter.actions.push(newAction);
+
+      set({
+        character: newCharacter,
+        currentActionId: newAction.id,
+        currentFrameId: newAction.frames[0]?.id || null,
+        currentLayerId: newAction.frames[0]?.layers[0]?.id || null,
+      });
+    } else {
+      const currentAction = newCharacter.actions.find((a) => a.id === get().currentActionId);
+      if (!currentAction) return false;
+
+      currentAction.frames.push(...actionFrames);
+
+      const lastFrame = actionFrames[actionFrames.length - 1];
+      set({
+        character: newCharacter,
+        currentFrameId: lastFrame?.id || null,
+        currentLayerId: lastFrame?.layers[0]?.id || null,
+      });
+    }
+
+    setTimeout(() => get().pushHistory(), 0);
+    return true;
+  },
 }));
 
 setTimeout(() => {

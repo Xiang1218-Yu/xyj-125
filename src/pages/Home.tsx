@@ -8,11 +8,12 @@ import AnimationPreview from '@/components/AnimationPreview';
 import SpriteSheetGenerator from '@/components/SpriteSheetGenerator';
 import CharacterSettings from '@/components/CharacterSettings';
 import CharacterTemplates from '@/components/CharacterTemplates';
+import ParticleGenerator from '@/components/ParticleGenerator';
 import { SaveManager } from '@/components/SaveManager';
-import { Palette, Layers, Film, Settings, Grid3X3, Undo2, Redo2, Save, HardDrive, RotateCcw, ChevronDown, ChevronUp, X, AlertTriangle } from 'lucide-react';
+import { Palette, Layers, Film, Settings, Grid3X3, Sparkles, Undo2, Redo2, Save, HardDrive, RotateCcw, ChevronDown, ChevronUp, X, AlertTriangle } from 'lucide-react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
 
-type TabType = 'preview' | 'spritesheet' | 'settings';
+type TabType = 'preview' | 'spritesheet' | 'particle' | 'settings';
 
 const Home = () => {
   const [rightTab, setRightTab] = useState<TabType>('preview');
@@ -200,6 +201,7 @@ const Home = () => {
   const rightTabs: { id: TabType; label: string; icon: any }[] = [
     { id: 'preview', label: '预览', icon: Film },
     { id: 'spritesheet', label: 'SpriteSheet', icon: Grid3X3 },
+    { id: 'particle', label: '粒子', icon: Sparkles },
     { id: 'settings', label: '设置', icon: Settings },
   ];
 
@@ -376,6 +378,7 @@ const Home = () => {
           <div className="flex-1 overflow-y-auto p-3">
             {rightTab === 'preview' && <AnimationPreview />}
             {rightTab === 'spritesheet' && <SpriteSheetGenerator />}
+            {rightTab === 'particle' && <ParticleGenerator />}
             {rightTab === 'settings' && (
               <div className="space-y-3">
                 <div className="bg-[#1a1a2e] rounded-lg border border-[#0f3460] p-3">

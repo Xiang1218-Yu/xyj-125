@@ -138,4 +138,26 @@ export interface PixelEditorActions {
   setLayerOpacity: (layerId: string, opacity: number) => void;
   getCurrentLayer: () => Layer | null;
   getFrameMergedPixels: (frame: Frame) => number[][];
+  generateParticleAnimation: (config: {
+    type: string;
+    frameCount: number;
+    actionName?: string;
+    insertMode?: 'newAction' | 'currentAction';
+    particleCount?: number;
+    colors?: number[];
+    emitX?: number;
+    emitY?: number;
+    emitRadius?: number;
+    minSpeed?: number;
+    maxSpeed?: number;
+    minLife?: number;
+    maxLife?: number;
+    minSize?: number;
+    maxSize?: number;
+    gravity?: number;
+    friction?: number;
+    direction?: number;
+    spread?: number;
+    emissionRate?: number;
+  }) => boolean;
 }
