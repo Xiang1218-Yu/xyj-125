@@ -3,6 +3,7 @@ import PixelCanvas from '@/components/PixelCanvas';
 import ColorPalette from '@/components/ColorPalette';
 import ActionPanel from '@/components/ActionPanel';
 import FrameList from '@/components/FrameList';
+import LayerList from '@/components/LayerList';
 import AnimationPreview from '@/components/AnimationPreview';
 import SpriteSheetGenerator from '@/components/SpriteSheetGenerator';
 import CharacterSettings from '@/components/CharacterSettings';
@@ -275,23 +276,37 @@ const Home = () => {
           </div>
           <div
             className={`border-t border-[#0f3460] transition-all duration-300 ease-in-out overflow-hidden ${
-              framePanelExpanded ? 'h-auto min-h-[160px] max-h-[50vh]' : 'h-[44px]'
+              framePanelExpanded ? 'h-auto min-h-[200px] max-h-[55vh]' : 'h-[44px]'
             }`}
           >
             <div
               className="flex items-center justify-between px-3 py-2 bg-[#16213e] border-b border-[#0f3460] transition-colors hover:bg-[#0f3460]"
             >
-              <div className="flex items-center gap-2">
-                <Layers size={14} className="text-[#e94560]" />
-                <span className="text-xs font-medium text-gray-300 pixel-font">帧序列</span>
-                <span className="text-[10px] text-gray-500">
-                  ({character.actions.find(a => a.id === currentActionId)?.frames.length || 0} 帧)
-                </span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Film size={14} className="text-[#e94560]" />
+                  <span className="text-xs font-medium text-gray-300 pixel-font">帧序列</span>
+                  <span className="text-[10px] text-gray-500">
+                    ({character.actions.find(a => a.id === currentActionId)?.frames.length || 0} 帧)
+                  </span>
+                </div>
+                <div className="w-px h-4 bg-[#0f3460]" />
+                <div className="flex items-center gap-2">
+                  <Layers size={14} className="text-[#3498db]" />
+                  <span className="text-xs font-medium text-gray-300 pixel-font">图层</span>
+                  <span className="text-[10px] text-gray-500">
+                    ({(() => {
+                      const action = character.actions.find(a => a.id === currentActionId);
+                      const frame = action?.frames.find(f => f.id === currentFrameId);
+                      return frame?.layers.length || 0;
+                    })()} 图层)
+                  </span>
+                </div>
               </div>
               <button
                 onClick={() => setFramePanelExpanded(!framePanelExpanded)}
                 className="p-1 rounded hover:bg-[#1a1a2e] text-gray-400 hover:text-white transition-colors"
-                title={framePanelExpanded ? '收起帧序列' : '展开帧序列'}
+                title={framePanelExpanded ? '收起' : '展开'}
               >
                 {framePanelExpanded ? (
                   <ChevronDown size={16} />
@@ -301,8 +316,14 @@ const Home = () => {
               </button>
             </div>
             {framePanelExpanded && (
-              <div className="p-3 pt-2 overflow-y-auto" style={{ maxHeight: 'calc(50vh - 44px - 10px)' }}>
-                <FrameList />
+              <div className="flex gap-3 p-3 pt-2 overflow-hidden" style={{ maxHeight: 'calc(55vh - 44px - 10px)' }}>
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <FrameList />
+                </div>
+                <div className="w-px bg-[#0f3460] flex-shrink-0" />
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <LayerList />
+                </div>
               </div>
             )}
           </div>

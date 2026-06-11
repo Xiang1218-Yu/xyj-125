@@ -46,17 +46,22 @@ const SpriteSheetGenerator = () => {
         const offsetX = col * character.width * scaleFactor;
         const offsetY = row * character.height * scaleFactor;
 
-        for (let y = 0; y < character.height; y++) {
-          for (let x = 0; x < character.width; x++) {
-            const colorIndex = frame.pixels[y][x];
-            if (colorIndex >= 0 && colorIndex < pixelColors.length) {
-              ctx.fillStyle = pixelColors[colorIndex];
-              ctx.fillRect(
-                offsetX + x * scaleFactor,
-                offsetY + y * scaleFactor,
-                scaleFactor,
-                scaleFactor
-              );
+        for (const layer of frame.layers) {
+          if (!layer.visible) continue;
+          for (let y = 0; y < character.height; y++) {
+            for (let x = 0; x < character.width; x++) {
+              const colorIndex = layer.pixels[y][x];
+              if (colorIndex >= 0 && colorIndex < pixelColors.length) {
+                ctx.globalAlpha = layer.opacity;
+                ctx.fillStyle = pixelColors[colorIndex];
+                ctx.fillRect(
+                  offsetX + x * scaleFactor,
+                  offsetY + y * scaleFactor,
+                  scaleFactor,
+                  scaleFactor
+                );
+                ctx.globalAlpha = 1;
+              }
             }
           }
         }

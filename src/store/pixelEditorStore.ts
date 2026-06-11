@@ -1,10 +1,67 @@
 import { create } from 'zustand';
-import type { Character, Frame, Action, PixelEditorState, PixelEditorActions, SaveEntry, SaveMeta, SaveData } from '@/types/animation';
+import type { Character, Frame, Action, Layer, PixelEditorState, PixelEditorActions, SaveEntry, SaveMeta, SaveData } from '@/types/animation';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
 const createEmptyPixels = (width: number, height: number): number[][] => {
   return Array(height).fill(null).map(() => Array(width).fill(-1));
+};
+
+const createDefaultLayer = (width: number, height: number, name = 'Layer 1'): Layer => ({
+  id: generateId(),
+  name,
+  pixels: createEmptyPixels(width, height),
+  visible: true,
+  locked: false,
+  opacity: 1,
+});
+
+const createFrameWithPixels = (width: number, height: number, pixels: number[][], name: string, delay: number): Frame => {
+  const layer: Layer = {
+    id: generateId(),
+    name: 'Layer 1',
+    pixels: pixels.map((row) => [...row]),
+    visible: true,
+    locked: false,
+    opacity: 1,
+  };
+  return {
+    id: generateId(),
+    name,
+    layers: [layer],
+    delay,
+  };
+};
+
+const migrateFramePixelsToLayers = (frame: any, width: number, height: number): Frame => {
+  if (frame.layers && Array.isArray(frame.layers)) {
+    return frame as Frame;
+  }
+  const pixels = frame.pixels || createEmptyPixels(width, height);
+  return createFrameWithPixels(width, height, pixels, frame.name || 'frame', frame.delay || 200);
+};
+
+const getFrameMergedPixelsImpl = (frame: Frame, width: number, height: number): number[][] => {
+  const merged = createEmptyPixels(width, height);
+  for (const layer of frame.layers) {
+    if (!layer.visible) continue;
+    const layerOpacity = layer.opacity;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const colorIndex = layer.pixels[y]?.[x] ?? -1;
+        if (colorIndex >= 0) {
+          if (layerOpacity >= 1) {
+            merged[y][x] = colorIndex;
+          } else if (layerOpacity > 0) {
+            if (merged[y][x] === -1 || Math.random() < layerOpacity) {
+              merged[y][x] = colorIndex;
+            }
+          }
+        }
+      }
+    }
+  }
+  return merged;
 };
 
 const defaultColors = [
@@ -30,7 +87,7 @@ const createSampleCharacter = (): Character => {
   const width = 16;
   const height = 16;
 
-  const createIdleFrame = (): number[][] => {
+  const createIdleFramePixels = (): number[][] => {
     const pixels = createEmptyPixels(width, height);
     for (let y = 3; y < 6; y++) {
       for (let x = 5; x < 11; x++) {
@@ -81,8 +138,8 @@ const createSampleCharacter = (): Character => {
     return pixels;
   };
 
-  const createWalkFrame1 = (): number[][] => {
-    const pixels = createIdleFrame();
+  const createWalkFrame1Pixels = (): number[][] => {
+    const pixels = createIdleFramePixels();
     for (let y = 12; y < 15; y++) {
       pixels[y][6] = -1;
       pixels[y][7] = -1;
@@ -94,8 +151,8 @@ const createSampleCharacter = (): Character => {
     return pixels;
   };
 
-  const createWalkFrame2 = (): number[][] => {
-    const pixels = createIdleFrame();
+  const createWalkFrame2Pixels = (): number[][] => {
+    const pixels = createIdleFramePixels();
     for (let y = 12; y < 15; y++) {
       pixels[y][8] = -1;
       pixels[y][9] = -1;
@@ -109,33 +166,10 @@ const createSampleCharacter = (): Character => {
     return pixels;
   };
 
-  const idleFrame: Frame = {
-    id: generateId(),
-    name: 'idle_001',
-    pixels: createIdleFrame(),
-    delay: 200,
-  };
-
-  const walkFrame1: Frame = {
-    id: generateId(),
-    name: 'walk_001',
-    pixels: createWalkFrame1(),
-    delay: 150,
-  };
-
-  const walkFrame2: Frame = {
-    id: generateId(),
-    name: 'walk_002',
-    pixels: createWalkFrame2(),
-    delay: 150,
-  };
-
-  const jumpFrame: Frame = {
-    id: generateId(),
-    name: 'jump_001',
-    pixels: createIdleFrame(),
-    delay: 300,
-  };
+  const idleFrame = createFrameWithPixels(width, height, createIdleFramePixels(), 'idle_001', 200);
+  const walkFrame1 = createFrameWithPixels(width, height, createWalkFrame1Pixels(), 'walk_001', 150);
+  const walkFrame2 = createFrameWithPixels(width, height, createWalkFrame2Pixels(), 'walk_002', 150);
+  const jumpFrame = createFrameWithPixels(width, height, createIdleFramePixels(), 'jump_001', 300);
 
   const idleAction: Action = {
     id: generateId(),
@@ -201,6 +235,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   character: createSampleCharacter(),
   currentActionId: null,
   currentFrameId: null,
+  currentLayerId: null,
   selectedTool: 'pencil' as const,
   currentColor: '#000000',
   gridSize: 20,
@@ -225,17 +260,29 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   setCurrentAction: (actionId) => {
     const { character } = get();
     const action = character.actions.find((a) => a.id === actionId);
+    const firstFrame = action?.frames[0];
     set({
       currentActionId: actionId,
-      currentFrameId: action?.frames[0]?.id || null,
+      currentFrameId: firstFrame?.id || null,
+      currentLayerId: firstFrame?.layers[0]?.id || null,
     });
   },
 
-  setCurrentFrame: (frameId) => set({ currentFrameId: frameId }),
+  setCurrentFrame: (frameId) => {
+    const { character, currentActionId } = get();
+    const action = character.actions.find((a) => a.id === currentActionId);
+    const frame = action?.frames.find((f) => f.id === frameId);
+    set({
+      currentFrameId: frameId,
+      currentLayerId: frame?.layers[0]?.id || null,
+    });
+  },
+
+  setCurrentLayer: (layerId) => set({ currentLayerId: layerId }),
 
   setPixel: (x, y, colorIndex) => {
-    const { character, currentActionId, currentFrameId, selectedTool } = get();
-    if (!currentActionId || !currentFrameId) return;
+    const { character, currentActionId, currentFrameId, currentLayerId, selectedTool } = get();
+    if (!currentActionId || !currentFrameId || !currentLayerId) return;
 
     const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
     const action = newCharacter.actions.find((a) => a.id === currentActionId);
@@ -244,14 +291,17 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     const frame = action.frames.find((f) => f.id === currentFrameId);
     if (!frame) return;
 
+    const layer = frame.layers.find((l) => l.id === currentLayerId);
+    if (!layer || layer.locked) return;
+
     if (x < 0 || x >= character.width || y < 0 || y >= character.height) return;
 
     if (selectedTool === 'pencil') {
-      frame.pixels[y][x] = colorIndex;
+      layer.pixels[y][x] = colorIndex;
     } else if (selectedTool === 'eraser') {
-      frame.pixels[y][x] = -1;
+      layer.pixels[y][x] = -1;
     } else if (selectedTool === 'bucket') {
-      const targetIndex = frame.pixels[y][x];
+      const targetIndex = layer.pixels[y][x];
       if (targetIndex === colorIndex) return;
       const stack: [number, number][] = [[x, y]];
       const visited = new Set<string>();
@@ -260,9 +310,9 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
         const key = `${cx},${cy}`;
         if (visited.has(key)) continue;
         if (cx < 0 || cx >= character.width || cy < 0 || cy >= character.height) continue;
-        if (frame.pixels[cy][cx] !== targetIndex) continue;
+        if (layer.pixels[cy][cx] !== targetIndex) continue;
         visited.add(key);
-        frame.pixels[cy][cx] = colorIndex;
+        layer.pixels[cy][cx] = colorIndex;
         stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
       }
     }
@@ -284,6 +334,9 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
 
   addAction: (name) => {
     const { character } = get();
+    const framePixels = createEmptyPixels(character.width, character.height);
+    const layer = createDefaultLayer(character.width, character.height);
+    layer.pixels = framePixels;
     const newAction: Action = {
       id: generateId(),
       name,
@@ -291,7 +344,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
         {
           id: generateId(),
           name: `${name}_001`,
-          pixels: createEmptyPixels(character.width, character.height),
+          layers: [layer],
           delay: 200,
         },
       ],
@@ -301,6 +354,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       character: { ...character, actions: [...character.actions, newAction] },
       currentActionId: newAction.id,
       currentFrameId: newAction.frames[0].id,
+      currentLayerId: newAction.frames[0].layers[0].id,
     });
     setTimeout(() => get().pushHistory(), 0);
   },
@@ -312,10 +366,12 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       ? newActions[0]?.id || null
       : currentActionId;
     const currentAction = newActions.find((a) => a.id === newCurrentId);
+    const firstFrame = currentAction?.frames[0];
     set({
       character: { ...character, actions: newActions },
       currentActionId: newCurrentId,
-      currentFrameId: currentAction?.frames[0]?.id || null,
+      currentFrameId: firstFrame?.id || null,
+      currentLayerId: firstFrame?.layers[0]?.id || null,
     });
     setTimeout(() => get().pushHistory(), 0);
   },
@@ -341,7 +397,11 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       frames: action.frames.map((f) => ({
         ...f,
         id: generateId(),
-        pixels: f.pixels.map((row) => [...row]),
+        layers: f.layers.map((l) => ({
+          ...l,
+          id: generateId(),
+          pixels: l.pixels.map((row) => [...row]),
+        })),
       })),
     };
 
@@ -361,7 +421,13 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     const newFrame: Frame = {
       id: generateId(),
       name: `${action.name}_${String(action.frames.length + 1).padStart(3, '0')}`,
-      pixels: baseFrame ? baseFrame.pixels.map((row) => [...row]) : createEmptyPixels(character.width, character.height),
+      layers: baseFrame
+        ? baseFrame.layers.map((l) => ({
+            ...l,
+            id: generateId(),
+            pixels: l.pixels.map((row) => [...row]),
+          }))
+        : [createDefaultLayer(character.width, character.height)],
       delay: baseFrame?.delay || 200,
     };
 
@@ -372,7 +438,11 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       action.frames.push(newFrame);
     }
 
-    set({ character: newCharacter, currentFrameId: newFrame.id });
+    set({
+      character: newCharacter,
+      currentFrameId: newFrame.id,
+      currentLayerId: newFrame.layers[0]?.id || null,
+    });
     setTimeout(() => get().pushHistory(), 0);
   },
 
@@ -390,14 +460,18 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     action.frames.splice(index, 1);
 
     let newFrameId: string | null = null;
+    let newLayerId: string | null = null;
     if (action.frames.length > 0) {
       const newIndex = Math.min(index, action.frames.length - 1);
-      newFrameId = action.frames[newIndex].id;
+      const newFrame = action.frames[newIndex];
+      newFrameId = newFrame.id;
+      newLayerId = newFrame.layers[0]?.id || null;
     }
 
     set({
       character: newCharacter,
       currentFrameId: currentFrameId === frameId ? newFrameId : currentFrameId,
+      currentLayerId: currentFrameId === frameId ? newLayerId : get().currentLayerId,
     });
     setTimeout(() => get().pushHistory(), 0);
   },
@@ -417,12 +491,20 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     const newFrame: Frame = {
       id: generateId(),
       name: `${frame.name}_copy`,
-      pixels: frame.pixels.map((row) => [...row]),
+      layers: frame.layers.map((l) => ({
+        ...l,
+        id: generateId(),
+        pixels: l.pixels.map((row) => [...row]),
+      })),
       delay: frame.delay,
     };
 
     action.frames.splice(frameIndex + 1, 0, newFrame);
-    set({ character: newCharacter, currentFrameId: newFrame.id });
+    set({
+      character: newCharacter,
+      currentFrameId: newFrame.id,
+      currentLayerId: newFrame.layers[0]?.id || null,
+    });
     setTimeout(() => get().pushHistory(), 0);
   },
 
@@ -521,11 +603,15 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       const newFrame: Frame = {
         id: generateId(),
         name: `${frame.name}_copy`,
-        pixels: frame.pixels.map((row) => [...row]),
+        layers: frame.layers.map((l) => ({
+          ...l,
+          id: generateId(),
+          pixels: l.pixels.map((row) => [...row]),
+        })),
         delay: frame.delay,
       };
 
-      action.frames.splice(frameIndex + 1 + newFrameIds.indexOf(frameId) + 1 ? 0 : 0, 0, newFrame);
+      action.frames.splice(frameIndex + 1 + newFrameIds.length, 0, newFrame);
       newFrameIds.push(newFrame.id);
     }
 
@@ -544,12 +630,209 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     action.frames = action.frames.filter((f) => !frameIds.includes(f.id));
 
     let newCurrentId: string | null = currentFrameId;
+    let newLayerId: string | null = get().currentLayerId;
     if (currentFrameId && frameIds.includes(currentFrameId)) {
-      newCurrentId = action.frames[0]?.id || null;
+      const firstFrame = action.frames[0];
+      newCurrentId = firstFrame?.id || null;
+      newLayerId = firstFrame?.layers[0]?.id || null;
     }
 
-    set({ character: newCharacter, currentFrameId: newCurrentId, selectedFrameIds: [] });
+    set({
+      character: newCharacter,
+      currentFrameId: newCurrentId,
+      currentLayerId: newLayerId,
+      selectedFrameIds: [],
+    });
     setTimeout(() => get().pushHistory(), 0);
+  },
+
+  addLayer: () => {
+    const { character, currentActionId, currentFrameId } = get();
+    if (!currentActionId || !currentFrameId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const newLayer = createDefaultLayer(
+      character.width,
+      character.height,
+      `Layer ${frame.layers.length + 1}`
+    );
+
+    frame.layers.push(newLayer);
+
+    set({
+      character: newCharacter,
+      currentLayerId: newLayer.id,
+    });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  deleteLayer: (layerId) => {
+    const { character, currentActionId, currentFrameId, currentLayerId } = get();
+    if (!currentActionId || !currentFrameId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    if (frame.layers.length <= 1) return;
+
+    const index = frame.layers.findIndex((l) => l.id === layerId);
+    if (index === -1) return;
+
+    frame.layers.splice(index, 1);
+
+    let newLayerId = currentLayerId;
+    if (currentLayerId === layerId) {
+      const newIndex = Math.min(index, frame.layers.length - 1);
+      newLayerId = frame.layers[newIndex]?.id || null;
+    }
+
+    set({
+      character: newCharacter,
+      currentLayerId: newLayerId,
+    });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  duplicateLayer: (layerId) => {
+    const { character, currentActionId, currentFrameId } = get();
+    if (!currentActionId || !currentFrameId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layerIndex = frame.layers.findIndex((l) => l.id === layerId);
+    if (layerIndex === -1) return;
+
+    const layer = frame.layers[layerIndex];
+    const newLayer: Layer = {
+      id: generateId(),
+      name: `${layer.name}_copy`,
+      pixels: layer.pixels.map((row) => [...row]),
+      visible: layer.visible,
+      locked: false,
+      opacity: layer.opacity,
+    };
+
+    frame.layers.splice(layerIndex + 1, 0, newLayer);
+
+    set({
+      character: newCharacter,
+      currentLayerId: newLayer.id,
+    });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  renameLayer: (layerId, name) => {
+    const { character, currentActionId, currentFrameId } = get();
+    if (!currentActionId || !currentFrameId) return;
+
+    const newCharacter = { ...character };
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layer = frame.layers.find((l) => l.id === layerId);
+    if (layer) layer.name = name;
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  moveLayer: (fromIndex, toIndex) => {
+    const { character, currentActionId, currentFrameId } = get();
+    if (!currentActionId || !currentFrameId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const [movedLayer] = frame.layers.splice(fromIndex, 1);
+    frame.layers.splice(toIndex, 0, movedLayer);
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  setLayerVisible: (layerId, visible) => {
+    const { character, currentActionId, currentFrameId } = get();
+    if (!currentActionId || !currentFrameId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layer = frame.layers.find((l) => l.id === layerId);
+    if (layer) layer.visible = visible;
+
+    set({ character: newCharacter });
+  },
+
+  setLayerLocked: (layerId, locked) => {
+    const { character, currentActionId, currentFrameId } = get();
+    if (!currentActionId || !currentFrameId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layer = frame.layers.find((l) => l.id === layerId);
+    if (layer) layer.locked = locked;
+
+    set({ character: newCharacter });
+  },
+
+  setLayerOpacity: (layerId, opacity) => {
+    const { character, currentActionId, currentFrameId } = get();
+    if (!currentActionId || !currentFrameId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layer = frame.layers.find((l) => l.id === layerId);
+    if (layer) layer.opacity = Math.max(0, Math.min(1, opacity));
+
+    set({ character: newCharacter });
+  },
+
+  getCurrentLayer: () => {
+    const state = get();
+    const action = state.character.actions.find((a) => a.id === state.currentActionId);
+    const frame = action?.frames.find((f) => f.id === state.currentFrameId);
+    return frame?.layers.find((l) => l.id === state.currentLayerId) || null;
+  },
+
+  getFrameMergedPixels: (frame) => {
+    const { character } = get();
+    return getFrameMergedPixelsImpl(frame, character.width, character.height);
   },
 
   generateSpriteSheet: (actionId) => {
@@ -568,10 +851,11 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     for (let i = 0; i < action.frames.length; i++) {
       const frame = action.frames[i];
       const offsetX = i * character.width;
+      const mergedPixels = getFrameMergedPixelsImpl(frame, character.width, character.height);
 
       for (let y = 0; y < character.height; y++) {
         for (let x = 0; x < character.width; x++) {
-          const colorIndex = frame.pixels[y][x];
+          const colorIndex = mergedPixels[y][x];
           if (colorIndex >= 0 && colorIndex < pixelColors.length) {
             ctx.fillStyle = pixelColors[colorIndex];
             ctx.fillRect(offsetX + x, y, 1, 1);
@@ -614,15 +898,17 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
 
     for (const action of newCharacter.actions) {
       for (const frame of action.frames) {
-        const newPixels = createEmptyPixels(width, height);
-        const minW = Math.min(width, character.width);
-        const minH = Math.min(height, character.height);
-        for (let y = 0; y < minH; y++) {
-          for (let x = 0; x < minW; x++) {
-            newPixels[y][x] = frame.pixels[y][x];
+        for (const layer of frame.layers) {
+          const newPixels = createEmptyPixels(width, height);
+          const minW = Math.min(width, character.width);
+          const minH = Math.min(height, character.height);
+          for (let y = 0; y < minH; y++) {
+            for (let x = 0; x < minW; x++) {
+              newPixels[y][x] = layer.pixels[y][x];
+            }
           }
+          layer.pixels = newPixels;
         }
-        frame.pixels = newPixels;
       }
     }
 
@@ -665,11 +951,13 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     const restoredCharacter = deepCloneCharacter(history[newIndex]);
 
     const firstAction = restoredCharacter.actions[0];
+    const firstFrame = firstAction?.frames[0];
     set({
       character: restoredCharacter,
       historyIndex: newIndex,
       currentActionId: firstAction?.id || null,
-      currentFrameId: firstAction?.frames[0]?.id || null,
+      currentFrameId: firstFrame?.id || null,
+      currentLayerId: firstFrame?.layers[0]?.id || null,
     });
   },
 
@@ -681,11 +969,13 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     const restoredCharacter = deepCloneCharacter(history[newIndex]);
 
     const firstAction = restoredCharacter.actions[0];
+    const firstFrame = firstAction?.frames[0];
     set({
       character: restoredCharacter,
       historyIndex: newIndex,
       currentActionId: firstAction?.id || null,
-      currentFrameId: firstAction?.frames[0]?.id || null,
+      currentFrameId: firstFrame?.id || null,
+      currentLayerId: firstFrame?.layers[0]?.id || null,
     });
   },
 
@@ -795,8 +1085,19 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       const entry: SaveEntry = JSON.parse(raw);
       if (!entry.data || !entry.data.character) return false;
 
-      const { character, pixelColors, fps, gridSize } = entry.data;
+      let { character, pixelColors, fps, gridSize } = entry.data;
+
+      // Migrate old frames without layers
+      const migratedChar = JSON.parse(JSON.stringify(character)) as Character;
+      for (const action of migratedChar.actions) {
+        action.frames = action.frames.map((f) =>
+          migrateFramePixelsToLayers(f, migratedChar.width, migratedChar.height)
+        );
+      }
+      character = migratedChar;
+
       const firstAction = character.actions[0];
+      const firstFrame = firstAction?.frames[0];
 
       const clonedChar = deepCloneCharacter(character);
       const newHistory = [deepCloneCharacter(clonedChar)];
@@ -807,7 +1108,8 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
         fps: fps || 8,
         gridSize: gridSize || 20,
         currentActionId: firstAction?.id || null,
-        currentFrameId: firstAction?.frames[0]?.id || null,
+        currentFrameId: firstFrame?.id || null,
+        currentLayerId: firstFrame?.layers[0]?.id || null,
         history: newHistory,
         historyIndex: 0,
         lastSavedTime: entry.meta.updatedAt,
@@ -853,11 +1155,13 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   resetCharacter: () => {
     const newCharacter = createSampleCharacter();
     const firstAction = newCharacter.actions[0];
+    const firstFrame = firstAction.frames[0];
     const newHistory = [deepCloneCharacter(newCharacter)];
     set({
       character: newCharacter,
       currentActionId: firstAction.id,
-      currentFrameId: firstAction.frames[0].id,
+      currentFrameId: firstFrame.id,
+      currentLayerId: firstFrame.layers[0].id,
       history: newHistory,
       historyIndex: 0,
       currentSaveName: null,
@@ -879,10 +1183,12 @@ setTimeout(() => {
   const state = usePixelEditorStore.getState();
   if (state.character.actions.length > 0) {
     const firstAction = state.character.actions[0];
+    const firstFrame = firstAction.frames[0];
     const initialHistory = [deepCloneCharacter(state.character)];
     usePixelEditorStore.setState({
       currentActionId: firstAction.id,
-      currentFrameId: firstAction.frames[0]?.id || null,
+      currentFrameId: firstFrame?.id || null,
+      currentLayerId: firstFrame?.layers[0]?.id || null,
       history: initialHistory,
       historyIndex: 0,
     });

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
 import { Plus, Trash2, Copy, GripVertical, Clock, Edit3, Check, X, Layers, ChevronUp, ChevronDown } from 'lucide-react';
 
@@ -27,12 +27,17 @@ const FrameThumbnail = ({ frameId, pixelColors, size = 48 }: { frameId: string; 
 
     ctx.clearRect(0, 0, w, h);
 
-    for (let y = 0; y < character.height; y++) {
-      for (let x = 0; x < character.width; x++) {
-        const colorIndex = frame.pixels[y][x];
-        if (colorIndex >= 0 && colorIndex < pixelColors.length) {
-          ctx.fillStyle = pixelColors[colorIndex];
-          ctx.fillRect(x * scale, y * scale, scale + 1, scale + 1);
+    for (const layer of frame.layers) {
+      if (!layer.visible) continue;
+      for (let y = 0; y < character.height; y++) {
+        for (let x = 0; x < character.width; x++) {
+          const colorIndex = layer.pixels[y][x];
+          if (colorIndex >= 0 && colorIndex < pixelColors.length) {
+            ctx.globalAlpha = layer.opacity;
+            ctx.fillStyle = pixelColors[colorIndex];
+            ctx.fillRect(x * scale, y * scale, scale + 1, scale + 1);
+            ctx.globalAlpha = 1;
+          }
         }
       }
     }

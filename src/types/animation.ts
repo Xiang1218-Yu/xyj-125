@@ -1,7 +1,16 @@
-export interface Frame {
+export interface Layer {
   id: string;
   name: string;
   pixels: number[][];
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+}
+
+export interface Frame {
+  id: string;
+  name: string;
+  layers: Layer[];
   delay: number;
 }
 
@@ -44,6 +53,7 @@ export interface PixelEditorState {
   character: Character;
   currentActionId: string | null;
   currentFrameId: string | null;
+  currentLayerId: string | null;
   selectedTool: 'pencil' | 'eraser' | 'bucket';
   currentColor: string;
   gridSize: number;
@@ -116,4 +126,15 @@ export interface PixelEditorActions {
   setOnionSkinPrevFrames: (count: number) => void;
   setOnionSkinNextFrames: (count: number) => void;
   setOnionSkinOpacity: (opacity: number) => void;
+  setCurrentLayer: (layerId: string) => void;
+  addLayer: () => void;
+  deleteLayer: (layerId: string) => void;
+  duplicateLayer: (layerId: string) => void;
+  renameLayer: (layerId: string, name: string) => void;
+  moveLayer: (fromIndex: number, toIndex: number) => void;
+  setLayerVisible: (layerId: string, visible: boolean) => void;
+  setLayerLocked: (layerId: string, locked: boolean) => void;
+  setLayerOpacity: (layerId: string, opacity: number) => void;
+  getCurrentLayer: () => Layer | null;
+  getFrameMergedPixels: (frame: Frame) => number[][];
 }

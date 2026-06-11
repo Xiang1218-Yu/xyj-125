@@ -57,12 +57,17 @@ const AnimationPreview = () => {
         }
       }
 
-      for (let y = 0; y < character.height; y++) {
-        for (let x = 0; x < character.width; x++) {
-          const colorIndex = frame.pixels[y][x];
-          if (colorIndex >= 0 && colorIndex < pixelColors.length) {
-            ctx.fillStyle = pixelColors[colorIndex];
-            ctx.fillRect(x * scale, y * scale, scale, scale);
+      for (const layer of frame.layers) {
+        if (!layer.visible) continue;
+        for (let y = 0; y < character.height; y++) {
+          for (let x = 0; x < character.width; x++) {
+            const colorIndex = layer.pixels[y][x];
+            if (colorIndex >= 0 && colorIndex < pixelColors.length) {
+              ctx.globalAlpha = layer.opacity;
+              ctx.fillStyle = pixelColors[colorIndex];
+              ctx.fillRect(x * scale, y * scale, scale, scale);
+              ctx.globalAlpha = 1;
+            }
           }
         }
       }

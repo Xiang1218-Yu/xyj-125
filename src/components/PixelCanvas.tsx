@@ -12,6 +12,7 @@ const PixelCanvas = () => {
     character,
     currentFrameId,
     currentActionId,
+    currentLayerId,
     gridSize,
     showGrid,
     selectedTool,
@@ -28,7 +29,6 @@ const PixelCanvas = () => {
     setOnionSkinPrevFrames,
     setOnionSkinNextFrames,
     setOnionSkinOpacity,
-    pushHistory,
   } = usePixelEditorStore();
 
   const isDrawingRef = useRef(false);
@@ -39,8 +39,9 @@ const PixelCanvas = () => {
     const state = usePixelEditorStore.getState();
     const action = state.character.actions.find((a) => a.id === state.currentActionId);
     const frame = action?.frames.find((f) => f.id === state.currentFrameId);
-    if (frame) {
-      previousPixelsRef.current = JSON.stringify(frame.pixels);
+    const layer = frame?.layers.find((l) => l.id === state.currentLayerId);
+    if (layer) {
+      previousPixelsRef.current = JSON.stringify(layer.pixels);
     }
   }, []);
 
@@ -49,7 +50,8 @@ const PixelCanvas = () => {
       const state = usePixelEditorStore.getState();
       const action = state.character.actions.find((a) => a.id === state.currentActionId);
       const frame = action?.frames.find((f) => f.id === state.currentFrameId);
-      if (frame && JSON.stringify(frame.pixels) !== previousPixelsRef.current) {
+      const layer = frame?.layers.find((l) => l.id === state.currentLayerId);
+      if (layer && JSON.stringify(layer.pixels) !== previousPixelsRef.current) {
         state.pushHistory();
       }
     }
@@ -104,29 +106,33 @@ const PixelCanvas = () => {
       : null;
   };
 
-  const drawFrameWithOpacity = (
+  const drawFrameLayersWithOpacity = (
     ctx: CanvasRenderingContext2D,
-    frame: { pixels: number[][] },
+    frame: { layers: { pixels: number[][]; visible: boolean; opacity: number }[] },
     opacity: number,
     tintColor?: string
   ) => {
     const { width, height } = character;
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const colorIndex = frame.pixels[y][x];
-        if (colorIndex >= 0 && colorIndex < pixelColors.length) {
-          const baseColor = pixelColors[colorIndex];
-          const rgb = hexToRgb(baseColor);
-          if (rgb) {
-            if (tintColor) {
-              const tintRgb = hexToRgb(tintColor);
-              if (tintRgb) {
-                ctx.fillStyle = `rgba(${Math.round(rgb.r * 0.5 + tintRgb.r * 0.5)}, ${Math.round(rgb.g * 0.5 + tintRgb.g * 0.5)}, ${Math.round(rgb.b * 0.5 + tintRgb.b * 0.5)}, ${opacity})`;
+    for (const layer of frame.layers) {
+      if (!layer.visible) continue;
+      const layerOpacity = layer.opacity * opacity;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const colorIndex = layer.pixels[y][x];
+          if (colorIndex >= 0 && colorIndex < pixelColors.length) {
+            const baseColor = pixelColors[colorIndex];
+            const rgb = hexToRgb(baseColor);
+            if (rgb) {
+              if (tintColor) {
+                const tintRgb = hexToRgb(tintColor);
+                if (tintRgb) {
+                  ctx.fillStyle = `rgba(${Math.round(rgb.r * 0.5 + tintRgb.r * 0.5)}, ${Math.round(rgb.g * 0.5 + tintRgb.g * 0.5)}, ${Math.round(rgb.b * 0.5 + tintRgb.b * 0.5)}, ${layerOpacity})`;
+                }
+              } else {
+                ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${layerOpacity})`;
               }
-            } else {
-              ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
+              ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
             }
-            ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
           }
         }
       }
@@ -166,25 +172,17 @@ const PixelCanvas = () => {
 
       for (const { frame: prevFrame, offset } of prevFrames) {
         const opacity = onionSkinOpacity / offset;
-        drawFrameWithOpacity(ctx, prevFrame, opacity, '#3498db');
+        drawFrameLayersWithOpacity(ctx, prevFrame, opacity, '#3498db');
       }
 
       for (const { frame: nextFrame, offset } of nextFrames) {
         const opacity = onionSkinOpacity / offset;
-        drawFrameWithOpacity(ctx, nextFrame, opacity, '#e74c3c');
+        drawFrameLayersWithOpacity(ctx, nextFrame, opacity, '#e74c3c');
       }
     }
 
     if (frame) {
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const colorIndex = frame.pixels[y][x];
-          if (colorIndex >= 0 && colorIndex < pixelColors.length) {
-            ctx.fillStyle = pixelColors[colorIndex];
-            ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
-          }
-        }
-      }
+      drawFrameLayersWithOpacity(ctx, frame, 1);
     }
 
     if (showGrid && gridSize > 4) {
@@ -207,7 +205,7 @@ const PixelCanvas = () => {
 
   useEffect(() => {
     drawCanvas();
-  }, [drawCanvas, currentFrameId, currentActionId, character, gridSize, showGrid, pixelColors, selectedTool, onionSkinEnabled, onionSkinPrevFrames, onionSkinNextFrames, onionSkinOpacity]);
+  }, [drawCanvas, currentFrameId, currentActionId, currentLayerId, character, gridSize, showGrid, pixelColors, selectedTool, onionSkinEnabled, onionSkinPrevFrames, onionSkinNextFrames, onionSkinOpacity]);
 
   const getPixelPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
