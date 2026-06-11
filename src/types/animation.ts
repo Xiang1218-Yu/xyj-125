@@ -58,6 +58,10 @@ export interface PixelEditorState {
   currentSaveName: string | null;
   autoSave: boolean;
   autoSaveInterval: number;
+  onionSkinEnabled: boolean;
+  onionSkinPrevFrames: number;
+  onionSkinNextFrames: number;
+  onionSkinOpacity: number;
 }
 
 export interface PixelEditorActions {
@@ -108,4 +112,8 @@ export interface PixelEditorActions {
   setAutoSave: (enabled: boolean) => void;
   setAutoSaveInterval: (minutes: number) => void;
   resetCharacter: () => void;
+  setOnionSkinEnabled: (enabled: boolean) => void;
+  setOnionSkinPrevFrames: (count: number) => void;
+  setOnionSkinNextFrames: (count: number) => void;
+  setOnionSkinOpacity: (opacity: number) => void;
 }

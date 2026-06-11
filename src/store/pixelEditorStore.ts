@@ -215,6 +215,10 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   currentSaveName: null,
   autoSave: false,
   autoSaveInterval: DEFAULT_AUTOSAVE_INTERVAL,
+  onionSkinEnabled: false,
+  onionSkinPrevFrames: 1,
+  onionSkinNextFrames: 1,
+  onionSkinOpacity: 0.3,
 
   setCharacter: (character) => set({ character }),
 
@@ -861,6 +865,14 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       selectedFrameIds: [],
     });
   },
+
+  setOnionSkinEnabled: (enabled) => set({ onionSkinEnabled: enabled }),
+
+  setOnionSkinPrevFrames: (count) => set({ onionSkinPrevFrames: Math.max(0, count) }),
+
+  setOnionSkinNextFrames: (count) => set({ onionSkinNextFrames: Math.max(0, count) }),
+
+  setOnionSkinOpacity: (opacity) => set({ onionSkinOpacity: Math.max(0.1, Math.min(0.9, opacity)) }),
 }));
 
 setTimeout(() => {

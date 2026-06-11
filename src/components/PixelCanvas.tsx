@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
-import { Pencil, Eraser, PaintBucket, Grid3X3, ZoomIn, ZoomOut } from 'lucide-react';
+import { Pencil, Eraser, PaintBucket, Grid3X3, ZoomIn, ZoomOut, Layers } from 'lucide-react';
 
 const PixelCanvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -16,10 +16,18 @@ const PixelCanvas = () => {
     showGrid,
     selectedTool,
     pixelColors,
+    onionSkinEnabled,
+    onionSkinPrevFrames,
+    onionSkinNextFrames,
+    onionSkinOpacity,
     setPixel,
     setGridSize,
     setShowGrid,
     setSelectedTool,
+    setOnionSkinEnabled,
+    setOnionSkinPrevFrames,
+    setOnionSkinNextFrames,
+    setOnionSkinOpacity,
     pushHistory,
   } = usePixelEditorStore();
 
@@ -57,6 +65,74 @@ const PixelCanvas = () => {
     return action?.frames.find((f) => f.id === state.currentFrameId) || null;
   }, []);
 
+  const getAdjacentFrames = useCallback(() => {
+    const state = usePixelEditorStore.getState();
+    const action = state.character.actions.find((a) => a.id === state.currentActionId);
+    if (!action) return { prevFrames: [], nextFrames: [] };
+
+    const currentIndex = action.frames.findIndex((f) => f.id === state.currentFrameId);
+    if (currentIndex === -1) return { prevFrames: [], nextFrames: [] };
+
+    const prevFrames: { frame: typeof action.frames[0]; offset: number }[] = [];
+    const nextFrames: { frame: typeof action.frames[0]; offset: number }[] = [];
+
+    for (let i = 1; i <= state.onionSkinPrevFrames; i++) {
+      const idx = currentIndex - i;
+      if (idx >= 0) {
+        prevFrames.push({ frame: action.frames[idx], offset: i });
+      }
+    }
+
+    for (let i = 1; i <= state.onionSkinNextFrames; i++) {
+      const idx = currentIndex + i;
+      if (idx < action.frames.length) {
+        nextFrames.push({ frame: action.frames[idx], offset: i });
+      }
+    }
+
+    return { prevFrames, nextFrames };
+  }, []);
+
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result
+      ? {
+          r: parseInt(result[1], 16),
+          g: parseInt(result[2], 16),
+          b: parseInt(result[3], 16),
+        }
+      : null;
+  };
+
+  const drawFrameWithOpacity = (
+    ctx: CanvasRenderingContext2D,
+    frame: { pixels: number[][] },
+    opacity: number,
+    tintColor?: string
+  ) => {
+    const { width, height } = character;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const colorIndex = frame.pixels[y][x];
+        if (colorIndex >= 0 && colorIndex < pixelColors.length) {
+          const baseColor = pixelColors[colorIndex];
+          const rgb = hexToRgb(baseColor);
+          if (rgb) {
+            if (tintColor) {
+              const tintRgb = hexToRgb(tintColor);
+              if (tintRgb) {
+                ctx.fillStyle = `rgba(${Math.round(rgb.r * 0.5 + tintRgb.r * 0.5)}, ${Math.round(rgb.g * 0.5 + tintRgb.g * 0.5)}, ${Math.round(rgb.b * 0.5 + tintRgb.b * 0.5)}, ${opacity})`;
+              }
+            } else {
+              ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
+            }
+            ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+          }
+        }
+      }
+    }
+  };
+
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -82,6 +158,20 @@ const PixelCanvas = () => {
           ctx.fillStyle = '#16213e';
         }
         ctx.fillRect(x * gridSize, y * gridSize, gridSize, gridSize);
+      }
+    }
+
+    if (onionSkinEnabled) {
+      const { prevFrames, nextFrames } = getAdjacentFrames();
+
+      for (const { frame: prevFrame, offset } of prevFrames) {
+        const opacity = onionSkinOpacity / offset;
+        drawFrameWithOpacity(ctx, prevFrame, opacity, '#3498db');
+      }
+
+      for (const { frame: nextFrame, offset } of nextFrames) {
+        const opacity = onionSkinOpacity / offset;
+        drawFrameWithOpacity(ctx, nextFrame, opacity, '#e74c3c');
       }
     }
 
@@ -113,11 +203,11 @@ const PixelCanvas = () => {
         ctx.stroke();
       }
     }
-  }, [character, gridSize, showGrid, pixelColors, getCurrentFrame]);
+  }, [character, gridSize, showGrid, pixelColors, getCurrentFrame, onionSkinEnabled, onionSkinOpacity, getAdjacentFrames]);
 
   useEffect(() => {
     drawCanvas();
-  }, [drawCanvas, currentFrameId, currentActionId, character, gridSize, showGrid, pixelColors, selectedTool]);
+  }, [drawCanvas, currentFrameId, currentActionId, character, gridSize, showGrid, pixelColors, selectedTool, onionSkinEnabled, onionSkinPrevFrames, onionSkinNextFrames, onionSkinOpacity]);
 
   const getPixelPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -215,6 +305,15 @@ const PixelCanvas = () => {
           >
             <Grid3X3 size={18} />
           </button>
+          <button
+            onClick={() => setOnionSkinEnabled(!onionSkinEnabled)}
+            className={`p-2 rounded transition-colors ${
+              onionSkinEnabled ? 'bg-[#e94560] text-white' : 'text-gray-400 hover:bg-[#1a1a2e] hover:text-white'
+            }`}
+            title="洋葱皮"
+          >
+            <Layers size={18} />
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -232,6 +331,56 @@ const PixelCanvas = () => {
           </button>
         </div>
       </div>
+
+      {onionSkinEnabled && (
+        <div className="flex items-center gap-4 px-3 py-2 bg-[#1a1a2e] border-b border-[#0f3460] text-xs text-gray-300">
+          <div className="flex items-center gap-2">
+            <span className="text-[#3498db]">前帧:</span>
+            <button
+              onClick={() => setOnionSkinPrevFrames(Math.max(0, onionSkinPrevFrames - 1))}
+              className="w-5 h-5 rounded bg-[#0f3460] hover:bg-[#e94560] text-white transition-colors flex items-center justify-center"
+            >
+              -
+            </button>
+            <span className="w-4 text-center">{onionSkinPrevFrames}</span>
+            <button
+              onClick={() => setOnionSkinPrevFrames(Math.min(5, onionSkinPrevFrames + 1))}
+              className="w-5 h-5 rounded bg-[#0f3460] hover:bg-[#e94560] text-white transition-colors flex items-center justify-center"
+            >
+              +
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[#e74c3c]">后帧:</span>
+            <button
+              onClick={() => setOnionSkinNextFrames(Math.max(0, onionSkinNextFrames - 1))}
+              className="w-5 h-5 rounded bg-[#0f3460] hover:bg-[#e94560] text-white transition-colors flex items-center justify-center"
+            >
+              -
+            </button>
+            <span className="w-4 text-center">{onionSkinNextFrames}</span>
+            <button
+              onClick={() => setOnionSkinNextFrames(Math.min(5, onionSkinNextFrames + 1))}
+              className="w-5 h-5 rounded bg-[#0f3460] hover:bg-[#e94560] text-white transition-colors flex items-center justify-center"
+            >
+              +
+            </button>
+          </div>
+          <div className="flex items-center gap-2 flex-1">
+            <span>透明度:</span>
+            <input
+              type="range"
+              min="0.1"
+              max="0.9"
+              step="0.1"
+              value={onionSkinOpacity}
+              onChange={(e) => setOnionSkinOpacity(parseFloat(e.target.value))}
+              className="flex-1 h-1 bg-[#0f3460] rounded-lg appearance-none cursor-pointer accent-[#e94560]"
+            />
+            <span className="w-8 text-center">{Math.round(onionSkinOpacity * 100)}%</span>
+          </div>
+        </div>
+      )}
 
       <div ref={containerRef} className="flex-1 flex items-center justify-center overflow-auto p-4">
         <canvas
