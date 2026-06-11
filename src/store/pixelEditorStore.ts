@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Character, Frame, Action, PixelEditorState, PixelEditorActions } from '@/types/animation';
+import type { Character, Frame, Action, PixelEditorState, PixelEditorActions, SaveEntry, SaveMeta, SaveData } from '@/types/animation';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
@@ -32,7 +32,6 @@ const createSampleCharacter = (): Character => {
 
   const createIdleFrame = (): number[][] => {
     const pixels = createEmptyPixels(width, height);
-    const c = { skin: 2, hair: 3, body: 4, eye: 0, outline: 0 };
     for (let y = 3; y < 6; y++) {
       for (let x = 5; x < 11; x++) {
         pixels[y][x] = 1;
@@ -172,24 +171,50 @@ type StoreState = PixelEditorState & PixelEditorActions;
 
 const deepCloneCharacter = (c: Character): Character => JSON.parse(JSON.stringify(c));
 
-const STORAGE_KEY = 'pixel_animator_save';
+const STORAGE_PREFIX = 'pixel_animator_save_';
+const STORAGE_INDEX_KEY = 'pixel_animator_saves_index';
 const MAX_HISTORY = 50;
+const DEFAULT_AUTOSAVE_INTERVAL = 5;
+
+const readSaveIndex = (): string[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_INDEX_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeSaveIndex = (names: string[]) => {
+  try {
+    localStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(names));
+  } catch {
+    console.error('Failed to write save index');
+  }
+};
+
+const countFrames = (character: Character): number => {
+  return character.actions.reduce((sum, a) => sum + a.frames.length, 0);
+};
 
 export const usePixelEditorStore = create<StoreState>((set, get) => ({
   character: createSampleCharacter(),
   currentActionId: null,
   currentFrameId: null,
-  selectedTool: 'pencil',
-  currentColor: defaultColors[2],
+  selectedTool: 'pencil' as const,
+  currentColor: '#000000',
   gridSize: 20,
   showGrid: true,
   isPlaying: false,
   fps: 8,
   selectedFrameIds: [],
-  pixelColors: defaultColors,
+  pixelColors: [...defaultColors],
   history: [],
   historyIndex: -1,
   lastSavedTime: null,
+  currentSaveName: null,
+  autoSave: false,
+  autoSaveInterval: DEFAULT_AUTOSAVE_INTERVAL,
 
   setCharacter: (character) => set({ character }),
 
@@ -670,59 +695,170 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     return historyIndex < history.length - 1;
   },
 
-  saveToLocal: () => {
-    const { character, pixelColors, fps, gridSize } = get();
-    const saveData = {
-      character,
-      pixelColors,
-      fps,
-      gridSize,
-      savedAt: Date.now(),
-    };
+  hasSave: (name: string) => {
+    return localStorage.getItem(STORAGE_PREFIX + name) !== null;
+  },
+
+  listSaves: (): SaveMeta[] => {
+    const names = readSaveIndex();
+    const metas: SaveMeta[] = [];
+    for (const name of names) {
+      try {
+        const raw = localStorage.getItem(STORAGE_PREFIX + name);
+        if (raw) {
+          const entry: SaveEntry = JSON.parse(raw);
+          metas.push(entry.meta);
+        }
+      } catch {
+        // skip corrupted entry
+      }
+    }
+    return metas.sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+
+  saveAs: (name: string): boolean => {
+    if (!name || !name.trim()) return false;
+    const trimmed = name.trim();
+
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
-      set({ lastSavedTime: Date.now() });
+      const { character, pixelColors, fps, gridSize } = get();
+      const now = Date.now();
+      const data: SaveData = { character, pixelColors, fps, gridSize };
+
+      const isNew = !get().hasSave(trimmed);
+      let meta: SaveMeta;
+
+      if (isNew) {
+        meta = {
+          name: trimmed,
+          createdAt: now,
+          updatedAt: now,
+          actionCount: character.actions.length,
+          frameCount: countFrames(character),
+        };
+      } else {
+        const raw = localStorage.getItem(STORAGE_PREFIX + trimmed);
+        const existing: SaveEntry = raw ? JSON.parse(raw) : null;
+        meta = existing ? {
+          ...existing.meta,
+          updatedAt: now,
+          actionCount: character.actions.length,
+          frameCount: countFrames(character),
+        } : {
+          name: trimmed,
+          createdAt: now,
+          updatedAt: now,
+          actionCount: character.actions.length,
+          frameCount: countFrames(character),
+        };
+      }
+
+      const entry: SaveEntry = { meta, data };
+      localStorage.setItem(STORAGE_PREFIX + trimmed, JSON.stringify(entry));
+
+      if (isNew) {
+        const index = readSaveIndex();
+        if (!index.includes(trimmed)) {
+          index.push(trimmed);
+          writeSaveIndex(index);
+        }
+      }
+
+      set({ lastSavedTime: now, currentSaveName: trimmed });
+      return true;
     } catch (e) {
-      console.error('Failed to save:', e);
+      console.error('Failed to save as:', e);
+      return false;
     }
   },
 
-  loadFromLocal: () => {
+  save: (): boolean => {
+    const { currentSaveName, saveAs } = get();
+    if (currentSaveName) {
+      return saveAs(currentSaveName);
+    }
+    return false;
+  },
+
+  loadSave: (name: string): boolean => {
+    if (!name || !name.trim()) return false;
+    const trimmed = name.trim();
+
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_PREFIX + trimmed);
       if (!raw) return false;
 
-      const data = JSON.parse(raw);
-      if (!data.character) return false;
+      const entry: SaveEntry = JSON.parse(raw);
+      if (!entry.data || !entry.data.character) return false;
 
-      const firstAction = data.character.actions[0];
+      const { character, pixelColors, fps, gridSize } = entry.data;
+      const firstAction = character.actions[0];
+
+      const clonedChar = deepCloneCharacter(character);
+      const newHistory = [deepCloneCharacter(clonedChar)];
+
       set({
-        character: data.character,
-        pixelColors: data.pixelColors || defaultColors,
-        fps: data.fps || 8,
-        gridSize: data.gridSize || 20,
+        character: clonedChar,
+        pixelColors: pixelColors || defaultColors,
+        fps: fps || 8,
+        gridSize: gridSize || 20,
         currentActionId: firstAction?.id || null,
         currentFrameId: firstAction?.frames[0]?.id || null,
-        history: [],
-        historyIndex: -1,
-        lastSavedTime: data.savedAt || null,
+        history: newHistory,
+        historyIndex: 0,
+        lastSavedTime: entry.meta.updatedAt,
+        currentSaveName: trimmed,
+        selectedFrameIds: [],
       });
+
       return true;
     } catch (e) {
-      console.error('Failed to load:', e);
+      console.error('Failed to load save:', e);
       return false;
     }
+  },
+
+  deleteSave: (name: string): boolean => {
+    if (!name || !name.trim()) return false;
+    const trimmed = name.trim();
+
+    try {
+      localStorage.removeItem(STORAGE_PREFIX + trimmed);
+      const index = readSaveIndex().filter(n => n !== trimmed);
+      writeSaveIndex(index);
+
+      const { currentSaveName } = get();
+      if (currentSaveName === trimmed) {
+        set({ currentSaveName: null, lastSavedTime: null });
+      }
+      return true;
+    } catch (e) {
+      console.error('Failed to delete save:', e);
+      return false;
+    }
+  },
+
+  setAutoSave: (enabled: boolean) => {
+    set({ autoSave: enabled });
+  },
+
+  setAutoSaveInterval: (minutes: number) => {
+    set({ autoSaveInterval: Math.max(1, minutes) });
   },
 
   resetCharacter: () => {
     const newCharacter = createSampleCharacter();
     const firstAction = newCharacter.actions[0];
+    const newHistory = [deepCloneCharacter(newCharacter)];
     set({
       character: newCharacter,
       currentActionId: firstAction.id,
       currentFrameId: firstAction.frames[0].id,
-      history: [],
-      historyIndex: -1,
+      history: newHistory,
+      historyIndex: 0,
+      currentSaveName: null,
+      lastSavedTime: null,
+      selectedFrameIds: [],
     });
   },
 }));
@@ -731,9 +867,12 @@ setTimeout(() => {
   const state = usePixelEditorStore.getState();
   if (state.character.actions.length > 0) {
     const firstAction = state.character.actions[0];
+    const initialHistory = [deepCloneCharacter(state.character)];
     usePixelEditorStore.setState({
       currentActionId: firstAction.id,
       currentFrameId: firstAction.frames[0]?.id || null,
+      history: initialHistory,
+      historyIndex: 0,
     });
   }
 }, 0);

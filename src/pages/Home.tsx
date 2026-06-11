@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import PixelCanvas from '@/components/PixelCanvas';
 import ColorPalette from '@/components/ColorPalette';
 import ActionPanel from '@/components/ActionPanel';
@@ -6,7 +6,8 @@ import FrameList from '@/components/FrameList';
 import AnimationPreview from '@/components/AnimationPreview';
 import SpriteSheetGenerator from '@/components/SpriteSheetGenerator';
 import CharacterSettings from '@/components/CharacterSettings';
-import { Palette, Layers, Film, Settings, Grid3X3, Undo2, Redo2, Save, FolderOpen, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import { SaveManager } from '@/components/SaveManager';
+import { Palette, Layers, Film, Settings, Grid3X3, Undo2, Redo2, Save, HardDrive, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
 
 type TabType = 'preview' | 'spritesheet' | 'settings';
@@ -14,18 +15,24 @@ type TabType = 'preview' | 'spritesheet' | 'settings';
 const Home = () => {
   const [rightTab, setRightTab] = useState<TabType>('preview');
   const [framePanelExpanded, setFramePanelExpanded] = useState(true);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [saveManagerOpen, setSaveManagerOpen] = useState(false);
+  const autoSaveTimerRef = useRef<number | null>(null);
 
   const {
     undo,
     redo,
     canUndo,
     canRedo,
-    pushHistory,
-    saveToLocal,
-    loadFromLocal,
+    save,
+    saveAs,
+    loadSave,
     resetCharacter,
     lastSavedTime,
+    currentSaveName,
+    autoSave,
+    autoSaveInterval,
+    listSaves,
     selectedTool,
     setSelectedTool,
     setIsPlaying,
@@ -36,37 +43,56 @@ const Home = () => {
     currentFrameId,
     deleteFrame,
     character,
+    pushHistory,
   } = usePixelEditorStore();
 
-  useEffect(() => {
-    pushHistory();
+  const showToast = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
+    setSaveMessage({ text: msg, type });
+    setTimeout(() => setSaveMessage(null), 2500);
   }, []);
 
-  const showSaveMsg = useCallback((msg: string) => {
-    setSaveMessage(msg);
-    setTimeout(() => setSaveMessage(null), 2000);
-  }, []);
-
-  const handleSave = useCallback(() => {
-    saveToLocal();
-    showSaveMsg('✓ 已保存到本地');
-  }, [saveToLocal, showSaveMsg]);
-
-  const handleLoad = useCallback(() => {
-    if (loadFromLocal()) {
-      showSaveMsg('✓ 已从本地加载');
+  const handleQuickSave = useCallback(() => {
+    if (currentSaveName) {
+      const success = save();
+      if (success) {
+        showToast(`✓ 已保存 \"${currentSaveName}\"`, 'success');
+      } else {
+        showToast('✗ 保存失败', 'error');
+      }
     } else {
-      showSaveMsg('✗ 无可用存档');
+      setSaveManagerOpen(true);
     }
-  }, [loadFromLocal, showSaveMsg]);
+  }, [currentSaveName, save, showToast]);
 
   const handleReset = useCallback(() => {
     if (confirm('确定要重置所有内容吗？此操作不可撤销。')) {
       resetCharacter();
-      setTimeout(() => pushHistory(), 0);
-      showSaveMsg('✓ 已重置');
+      showToast('✓ 已重置', 'success');
     }
-  }, [resetCharacter, pushHistory, showSaveMsg]);
+  }, [resetCharacter, showToast]);
+
+  useEffect(() => {
+    if (!autoSave || !currentSaveName) {
+      if (autoSaveTimerRef.current) {
+        clearInterval(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      return;
+    }
+
+    autoSaveTimerRef.current = window.setInterval(() => {
+      const success = save();
+      if (success) {
+        showToast(`✓ 自动保存 \"${currentSaveName}\"`, 'success');
+      }
+    }, autoSaveInterval * 60 * 1000);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearInterval(autoSaveTimerRef.current);
+      }
+    };
+  }, [autoSave, autoSaveInterval, currentSaveName, save, showToast]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -94,13 +120,19 @@ const Home = () => {
 
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        handleSave();
+        handleQuickSave();
         return;
       }
 
       if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
         e.preventDefault();
-        handleLoad();
+        setSaveManagerOpen(true);
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        setSaveManagerOpen(true);
         return;
       }
 
@@ -137,7 +169,7 @@ const Home = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, handleSave, handleLoad, setSelectedTool, setIsPlaying, isPlaying, addFrame, currentActionId, duplicateFrame, currentFrameId, deleteFrame, character]);
+  }, [undo, redo, handleQuickSave, setSaveManagerOpen, setSelectedTool, setIsPlaying, isPlaying, addFrame, currentActionId, duplicateFrame, currentFrameId, deleteFrame, character]);
 
   const rightTabs: { id: TabType; label: string; icon: any }[] = [
     { id: 'preview', label: '预览', icon: Film },
@@ -148,8 +180,10 @@ const Home = () => {
   return (
     <div className="h-screen flex flex-col bg-[#1a1a2e] text-gray-200 overflow-hidden relative">
       {saveMessage && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-[#2ecc71] text-white rounded shadow-lg text-sm animate-pulse">
-          {saveMessage}
+        <div className={`absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 text-white rounded shadow-lg text-sm animate-pulse ${
+          saveMessage.type === 'success' ? 'bg-[#2ecc71]' : 'bg-[#e74c3c]'
+        }`}>
+          {saveMessage.text}
         </div>
       )}
 
@@ -185,20 +219,20 @@ const Home = () => {
 
           <div className="flex items-center gap-1 bg-[#0f3460] rounded p-1 mr-2">
             <button
-              onClick={handleSave}
+              onClick={handleQuickSave}
               className="p-1.5 rounded text-[#2ecc71] hover:bg-[#16213e] transition-colors flex items-center gap-1"
-              title="保存 (Ctrl+S)"
+              title={`${currentSaveName ? `保存 \"${currentSaveName}\"` : '快速保存'} (Ctrl+S)`}
             >
               <Save size={16} />
-              <span className="text-xs hidden sm:inline">保存</span>
+              <span className="text-xs hidden sm:inline">{currentSaveName ? '保存' : '保存'}</span>
             </button>
             <button
-              onClick={handleLoad}
+              onClick={() => setSaveManagerOpen(true)}
               className="p-1.5 rounded text-[#3498db] hover:bg-[#16213e] transition-colors flex items-center gap-1"
-              title="加载 (Ctrl+O)"
+              title="存档管理 (Ctrl+O)"
             >
-              <FolderOpen size={16} />
-              <span className="text-xs hidden sm:inline">加载</span>
+              <HardDrive size={16} />
+              <span className="text-xs hidden sm:inline">存档</span>
             </button>
             <button
               onClick={handleReset}
@@ -210,8 +244,13 @@ const Home = () => {
           </div>
 
           {lastSavedTime && (
-            <div className="text-xs text-gray-500 hidden md:block">
-              上次保存: {new Date(lastSavedTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            <div className="text-xs text-gray-500 hidden md:flex items-center gap-2">
+              {currentSaveName && (
+                <span className="text-[#e94560]">{currentSaveName}</span>
+              )}
+              <span>
+                上次保存: {new Date(lastSavedTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
             </div>
           )}
         </div>
@@ -295,7 +334,11 @@ const Home = () => {
                 <div className="bg-[#1a1a2e] rounded-lg border border-[#0f3460] p-3">
                   <h3 className="text-sm font-medium text-gray-300 mb-2 pixel-font text-xs">快捷键</h3>
                   <div className="space-y-1 text-xs text-gray-500">
-                    <p><kbd className="px-1.5 py-0.5 bg-[#0f3460] rounded text-gray-400">B</kbd> 画笔工具</p>
+                    <p><kbd className="px-1.5 py-0.5 bg-[#0f3460] rounded text-gray-400">Ctrl+Z</kbd> 撤销</p>
+                    <p><kbd className="px-1.5 py-0.5 bg-[#0f3460] rounded text-gray-400">Ctrl+Y</kbd> 重做</p>
+                    <p><kbd className="px-1.5 py-0.5 bg-[#0f3460] rounded text-gray-400">Ctrl+S</kbd> 快速保存</p>
+                    <p><kbd className="px-1.5 py-0.5 bg-[#0f3460] rounded text-gray-400">Ctrl+O</kbd> 存档管理</p>
+                    <p className="border-t border-[#0f3460] pt-1 mt-1"><kbd className="px-1.5 py-0.5 bg-[#0f3460] rounded text-gray-400">B</kbd> 画笔工具</p>
                     <p><kbd className="px-1.5 py-0.5 bg-[#0f3460] rounded text-gray-400">E</kbd> 橡皮擦</p>
                     <p><kbd className="px-1.5 py-0.5 bg-[#0f3460] rounded text-gray-400">G</kbd> 填充工具</p>
                     <p><kbd className="px-1.5 py-0.5 bg-[#0f3460] rounded text-gray-400">Space</kbd> 播放/暂停</p>
@@ -322,6 +365,12 @@ const Home = () => {
           </div>
         </aside>
       </div>
+
+      <SaveManager
+        isOpen={saveManagerOpen}
+        onClose={() => setSaveManagerOpen(false)}
+        showToast={showToast}
+      />
     </div>
   );
 };

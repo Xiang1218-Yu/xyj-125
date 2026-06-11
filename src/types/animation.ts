@@ -20,6 +20,26 @@ export interface Character {
   actions: Action[];
 }
 
+export interface SaveData {
+  character: Character;
+  pixelColors: string[];
+  fps: number;
+  gridSize: number;
+}
+
+export interface SaveMeta {
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  actionCount: number;
+  frameCount: number;
+}
+
+export interface SaveEntry {
+  meta: SaveMeta;
+  data: SaveData;
+}
+
 export interface PixelEditorState {
   character: Character;
   currentActionId: string | null;
@@ -35,6 +55,9 @@ export interface PixelEditorState {
   history: Character[];
   historyIndex: number;
   lastSavedTime: number | null;
+  currentSaveName: string | null;
+  autoSave: boolean;
+  autoSaveInterval: number;
 }
 
 export interface PixelEditorActions {
@@ -76,7 +99,13 @@ export interface PixelEditorActions {
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
-  saveToLocal: () => void;
-  loadFromLocal: () => boolean;
+  saveAs: (name: string) => boolean;
+  save: () => boolean;
+  loadSave: (name: string) => boolean;
+  deleteSave: (name: string) => boolean;
+  listSaves: () => SaveMeta[];
+  hasSave: (name: string) => boolean;
+  setAutoSave: (enabled: boolean) => void;
+  setAutoSaveInterval: (minutes: number) => void;
   resetCharacter: () => void;
 }
