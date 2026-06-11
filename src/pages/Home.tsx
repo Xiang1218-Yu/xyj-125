@@ -7,6 +7,7 @@ import LayerList from '@/components/LayerList';
 import AnimationPreview from '@/components/AnimationPreview';
 import SpriteSheetGenerator from '@/components/SpriteSheetGenerator';
 import CharacterSettings from '@/components/CharacterSettings';
+import CharacterTemplates from '@/components/CharacterTemplates';
 import { SaveManager } from '@/components/SaveManager';
 import { Palette, Layers, Film, Settings, Grid3X3, Undo2, Redo2, Save, HardDrive, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
@@ -264,6 +265,9 @@ const Home = () => {
           </div>
           <div className="p-3 border-b border-[#0f3460]">
             <ActionPanel />
+          </div>
+          <div className="p-3 border-b border-[#0f3460]">
+            <CharacterTemplates />
           </div>
           <div className="p-3 flex-1 overflow-hidden">
             <ColorPalette />

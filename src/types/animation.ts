@@ -75,6 +75,7 @@ export interface PixelEditorState {
 }
 
 export interface PixelEditorActions {
+  applyTemplate: (templateId: string) => boolean;
   setCharacter: (character: Character) => void;
   setCurrentAction: (actionId: string) => void;
   setCurrentFrame: (frameId: string) => void;

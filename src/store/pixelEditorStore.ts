@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Character, Frame, Action, Layer, PixelEditorState, PixelEditorActions, SaveEntry, SaveMeta, SaveData } from '@/types/animation';
+import { characterTemplates } from '@/data/characterTemplates';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
@@ -254,6 +255,27 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   onionSkinPrevFrames: 1,
   onionSkinNextFrames: 1,
   onionSkinOpacity: 0.3,
+
+  applyTemplate: (templateId) => {
+    const template = characterTemplates.find((t) => t.id === templateId);
+    if (!template) return false;
+    const newCharacter = template.buildCharacter();
+    const firstAction = newCharacter.actions[0];
+    const firstFrame = firstAction?.frames[0];
+    const newHistory = [deepCloneCharacter(newCharacter)];
+    set({
+      character: newCharacter,
+      currentActionId: firstAction?.id || null,
+      currentFrameId: firstFrame?.id || null,
+      currentLayerId: firstFrame?.layers[0]?.id || null,
+      history: newHistory,
+      historyIndex: 0,
+      currentSaveName: null,
+      lastSavedTime: null,
+      selectedFrameIds: [],
+    });
+    return true;
+  },
 
   setCharacter: (character) => set({ character }),
 
