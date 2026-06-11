@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import PixelCanvas from '@/components/PixelCanvas';
 import ColorPalette from '@/components/ColorPalette';
 import ActionPanel from '@/components/ActionPanel';
-import FrameList from '@/components/FrameList';
+import Timeline from '@/components/Timeline';
 import LayerList from '@/components/LayerList';
 import AnimationPreview from '@/components/AnimationPreview';
 import SpriteSheetGenerator from '@/components/SpriteSheetGenerator';
@@ -347,7 +347,7 @@ const Home = () => {
             {framePanelExpanded && (
               <div className="flex gap-3 p-3 pt-2 overflow-hidden" style={{ maxHeight: 'calc(55vh - 44px - 10px)' }}>
                 <div className="flex-1 min-w-0 overflow-hidden">
-                  <FrameList />
+                  <Timeline />
                 </div>
                 <div className="w-px bg-[#0f3460] flex-shrink-0" />
                 <div className="flex-1 min-w-0 overflow-hidden">
