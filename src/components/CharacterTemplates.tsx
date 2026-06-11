@@ -72,9 +72,9 @@ const CharacterTemplates = ({ onRequestApply }: CharacterTemplatesProps) => {
     : characterTemplates.filter((t) => t.category === activeCategory);
 
   return (
-    <div className="bg-[#16213e] rounded-lg border border-[#0f3460] flex flex-col overflow-hidden">
+    <div className="bg-[#16213e] rounded-lg border border-[#0f3460]">
       <div
-        className="flex items-center justify-between p-3 cursor-pointer transition-colors hover:bg-[#0f3460]/50 flex-shrink-0"
+        className="flex items-center justify-between p-3 cursor-pointer transition-colors hover:bg-[#0f3460]/50"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-2">
@@ -89,8 +89,8 @@ const CharacterTemplates = ({ onRequestApply }: CharacterTemplatesProps) => {
       </div>
 
       {expanded && (
-        <div className="flex-1 overflow-y-auto min-h-0 px-3 pb-3 space-y-3">
-          <div className="flex flex-wrap gap-1 flex-shrink-0 sticky top-0 bg-[#16213e] pt-2 pb-2 z-10">
+        <div className="px-3 pb-3 space-y-3">
+          <div className="flex flex-wrap gap-1">
             {templateCategories.map((cat) => {
               const Icon = getCategoryIcon(cat.icon);
               return (

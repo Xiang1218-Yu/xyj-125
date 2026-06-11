@@ -290,13 +290,9 @@ const Home = () => {
           <div className="p-3 border-b border-[#0f3460] flex-shrink-0">
             <ActionPanel />
           </div>
-          <div className="flex-1 min-h-0 flex flex-col p-3 gap-3 overflow-hidden">
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <CharacterTemplates onRequestApply={handleRequestApplyTemplate} />
-            </div>
-            <div className="flex-shrink-0 overflow-y-auto max-h-[35vh]">
-              <ColorPalette />
-            </div>
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+            <CharacterTemplates onRequestApply={handleRequestApplyTemplate} />
+            <ColorPalette />
           </div>
         </aside>
 
