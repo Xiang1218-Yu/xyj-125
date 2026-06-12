@@ -289,7 +289,7 @@ const SpriteSheetGenerator = () => {
       const width = character.width * scaleFactor;
       const height = character.height * scaleFactor;
 
-      const blob = encodeGif(width, height, gifFrames);
+      const blob = encodeGif(width, height, gifFrames, gifWithTransparency);
 
       const link = document.createElement('a');
       const actionName = showAllActions ? 'all' : (currentAction?.name || 'animation');
