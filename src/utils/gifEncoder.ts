@@ -213,15 +213,18 @@ export function encodeGif(
     throw new Error('No frames provided');
   }
 
+  const actualWidth = frames[0].imageData.width;
+  const actualHeight = frames[0].imageData.height;
+
   const { palette, transparentIndex, hasTransparency, paletteSizeBits, allIndices } =
-    buildPaletteAndIndices(frames, width, height);
+    buildPaletteAndIndices(frames, actualWidth, actualHeight);
 
   const output: number[] = [];
 
   output.push(0x47, 0x49, 0x46, 0x38, 0x39, 0x61);
 
-  writeShort(output, width);
-  writeShort(output, height);
+  writeShort(output, actualWidth);
+  writeShort(output, actualHeight);
 
   const globalColorTableFlag = 0x80;
   const colorResolution = ((paletteSizeBits - 1) & 0x07) << 4;
@@ -260,8 +263,8 @@ export function encodeGif(
     output.push(0x2c);
     writeShort(output, 0);
     writeShort(output, 0);
-    writeShort(output, width);
-    writeShort(output, height);
+    writeShort(output, actualWidth);
+    writeShort(output, actualHeight);
     output.push(0);
 
     output.push(minCodeSize);
@@ -286,15 +289,18 @@ export async function encodeGifAsync(
     throw new Error('No frames provided');
   }
 
+  const actualWidth = frames[0].imageData.width;
+  const actualHeight = frames[0].imageData.height;
+
   const { palette, transparentIndex, hasTransparency, paletteSizeBits, allIndices } =
-    buildPaletteAndIndices(frames, width, height);
+    buildPaletteAndIndices(frames, actualWidth, actualHeight);
 
   const output: number[] = [];
 
   output.push(0x47, 0x49, 0x46, 0x38, 0x39, 0x61);
 
-  writeShort(output, width);
-  writeShort(output, height);
+  writeShort(output, actualWidth);
+  writeShort(output, actualHeight);
 
   const globalColorTableFlag = 0x80;
   const colorResolution = ((paletteSizeBits - 1) & 0x07) << 4;
@@ -333,8 +339,8 @@ export async function encodeGifAsync(
     output.push(0x2c);
     writeShort(output, 0);
     writeShort(output, 0);
-    writeShort(output, width);
-    writeShort(output, height);
+    writeShort(output, actualWidth);
+    writeShort(output, actualHeight);
     output.push(0);
 
     output.push(minCodeSize);

@@ -101,6 +101,10 @@ const Home = () => {
   }, []);
 
   useEffect(() => {
+    (window as any).__debugPixelEditorStore = usePixelEditorStore;
+  }, []);
+
+  useEffect(() => {
     if (!autoSave || !currentSaveName) {
       if (autoSaveTimerRef.current) {
         clearInterval(autoSaveTimerRef.current);
