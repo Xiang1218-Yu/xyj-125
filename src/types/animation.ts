@@ -44,6 +44,8 @@ export interface SaveData {
   pixelColors: string[];
   fps: number;
   gridSize: number;
+  palettes?: PaletteGroup[];
+  activePaletteId?: string | null;
 }
 
 export interface SaveMeta {

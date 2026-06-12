@@ -213,6 +213,7 @@ const deepCloneCharacter = (c: Character): Character => JSON.parse(JSON.stringif
 
 const STORAGE_PREFIX = 'pixel_animator_save_';
 const STORAGE_INDEX_KEY = 'pixel_animator_saves_index';
+const PALETTES_STORAGE_KEY = 'pixel_animator_palettes';
 const MAX_HISTORY = 50;
 const DEFAULT_AUTOSAVE_INTERVAL = 5;
 
@@ -230,6 +231,28 @@ const writeSaveIndex = (names: string[]) => {
     localStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(names));
   } catch {
     console.error('Failed to write save index');
+  }
+};
+
+const persistPalettes = (palettes: PaletteGroup[], activePaletteId: string | null) => {
+  try {
+    localStorage.setItem(PALETTES_STORAGE_KEY, JSON.stringify({ palettes, activePaletteId }));
+  } catch {
+    console.error('Failed to persist palettes');
+  }
+};
+
+const loadPersistedPalettes = (): { palettes: PaletteGroup[]; activePaletteId: string | null } | null => {
+  try {
+    const raw = localStorage.getItem(PALETTES_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.palettes)) {
+      return { palettes: parsed.palettes, activePaletteId: parsed.activePaletteId || null };
+    }
+    return null;
+  } catch {
+    return null;
   }
 };
 
@@ -264,13 +287,13 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   tweenMode: 'linear' as TweenMode,
   tweenSteps: 3,
   tweenFrameIds: [],
-  palettes: [{
+  palettes: loadPersistedPalettes()?.palettes || [{
     id: 'default',
     name: '默认调色板',
     colors: [...defaultColors],
     isPreset: false,
   }],
-  activePaletteId: 'default',
+  activePaletteId: loadPersistedPalettes()?.activePaletteId || 'default',
 
   applyTemplate: (templateId) => {
     const template = characterTemplates.find((t) => t.id === templateId);
@@ -1066,9 +1089,9 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     const trimmed = name.trim();
 
     try {
-      const { character, pixelColors, fps, gridSize } = get();
+      const { character, pixelColors, fps, gridSize, palettes, activePaletteId } = get();
       const now = Date.now();
-      const data: SaveData = { character, pixelColors, fps, gridSize };
+      const data: SaveData = { character, pixelColors, fps, gridSize, palettes, activePaletteId };
 
       const isNew = !get().hasSave(trimmed);
       let meta: SaveMeta;
@@ -1136,7 +1159,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       const entry: SaveEntry = JSON.parse(raw);
       if (!entry.data || !entry.data.character) return false;
 
-      let { character, pixelColors, fps, gridSize } = entry.data;
+      let { character, pixelColors, fps, gridSize, palettes: savedPalettes, activePaletteId: savedActivePaletteId } = entry.data;
 
       // Migrate old frames without layers
       const migratedChar = JSON.parse(JSON.stringify(character)) as Character;
@@ -1153,11 +1176,28 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       const clonedChar = deepCloneCharacter(character);
       const newHistory = [deepCloneCharacter(clonedChar)];
 
+      const restoredPalettes = savedPalettes && savedPalettes.length > 0
+        ? savedPalettes
+        : [{
+            id: 'default',
+            name: '默认调色板',
+            colors: pixelColors || defaultColors,
+            isPreset: false,
+          }];
+      const restoredActivePaletteId = savedActivePaletteId || restoredPalettes[0]?.id || 'default';
+      const restoredPixelColors = savedPalettes && savedPalettes.length > 0
+        ? (restoredPalettes.find((p: PaletteGroup) => p.id === restoredActivePaletteId)?.colors || pixelColors || defaultColors)
+        : (pixelColors || defaultColors);
+
+      persistPalettes(restoredPalettes, restoredActivePaletteId);
+
       set({
         character: clonedChar,
-        pixelColors: pixelColors || defaultColors,
+        pixelColors: restoredPixelColors,
         fps: fps || 8,
         gridSize: gridSize || 20,
+        palettes: restoredPalettes,
+        activePaletteId: restoredActivePaletteId,
         currentActionId: firstAction?.id || null,
         currentFrameId: firstFrame?.id || null,
         currentLayerId: firstFrame?.layers[0]?.id || null,
@@ -1208,6 +1248,12 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     const firstAction = newCharacter.actions[0];
     const firstFrame = firstAction.frames[0];
     const newHistory = [deepCloneCharacter(newCharacter)];
+    const resetPalettes: PaletteGroup[] = [{
+      id: 'default',
+      name: '默认调色板',
+      colors: [...defaultColors],
+      isPreset: false,
+    }];
     set({
       character: newCharacter,
       currentActionId: firstAction.id,
@@ -1218,6 +1264,9 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       currentSaveName: null,
       lastSavedTime: null,
       selectedFrameIds: [],
+      pixelColors: [...defaultColors],
+      palettes: resetPalettes,
+      activePaletteId: 'default',
     });
   },
 
@@ -1798,3 +1847,12 @@ setTimeout(() => {
     });
   }
 }, 0);
+
+let lastPersistedPalettesKey = '';
+usePixelEditorStore.subscribe((state) => {
+  const key = JSON.stringify(state.palettes) + '|' + state.activePaletteId;
+  if (key !== lastPersistedPalettesKey) {
+    lastPersistedPalettesKey = key;
+    persistPalettes(state.palettes, state.activePaletteId);
+  }
+});
