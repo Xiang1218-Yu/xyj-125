@@ -1,3 +1,11 @@
+export interface PaletteGroup {
+  id: string;
+  name: string;
+  colors: string[];
+  isPreset: boolean;
+  presetId?: string;
+}
+
 export type TweenMode = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'easeInQuad' | 'easeOutQuad' | 'easeInOutQuad';
 
 export interface Layer {
@@ -78,6 +86,8 @@ export interface PixelEditorState {
   tweenMode: TweenMode;
   tweenSteps: number;
   tweenFrameIds: string[];
+  palettes: PaletteGroup[];
+  activePaletteId: string | null;
 }
 
 export interface PixelEditorActions {
@@ -181,4 +191,13 @@ export interface PixelEditorActions {
   setTweenFrameIds: (frameIds: string[]) => void;
   clearTweenFrames: () => void;
   getTweenFrames: (actionId: string) => Frame[];
+  addPalette: (palette: Omit<PaletteGroup, 'id'>) => void;
+  removePalette: (paletteId: string) => void;
+  renamePalette: (paletteId: string, name: string) => void;
+  setActivePalette: (paletteId: string | null) => void;
+  importPresetPalette: (presetId: string) => void;
+  updatePaletteColors: (paletteId: string, colors: string[]) => void;
+  addColorToPalette: (paletteId: string, color: string) => void;
+  removeColorFromPalette: (paletteId: string, colorIndex: number) => void;
+  switchToPalette: (paletteId: string) => void;
 }

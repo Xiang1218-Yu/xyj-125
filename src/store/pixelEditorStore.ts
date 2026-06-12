@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import type { Character, Frame, Action, Layer, PixelEditorState, PixelEditorActions, SaveEntry, SaveMeta, SaveData, TweenMode } from '@/types/animation';
+import type { Character, Frame, Action, Layer, PixelEditorState, PixelEditorActions, SaveEntry, SaveMeta, SaveData, TweenMode, PaletteGroup } from '@/types/animation';
 import { characterTemplates } from '@/data/characterTemplates';
 import { generateParticleFrames } from '@/utils/particleEngine';
 import { DEFAULT_PARTICLE_CONFIGS } from '@/types/particle';
 import type { ParticleConfig, ParticleType } from '@/types/particle';
 import { buildTweenPlaybackFrames } from '@/utils/frameTweener';
+import { findPresetPalette } from '@/data/palettes';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
@@ -263,6 +264,13 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   tweenMode: 'linear' as TweenMode,
   tweenSteps: 3,
   tweenFrameIds: [],
+  palettes: [{
+    id: 'default',
+    name: '默认调色板',
+    colors: [...defaultColors],
+    isPreset: false,
+  }],
+  activePaletteId: 'default',
 
   applyTemplate: (templateId) => {
     const template = characterTemplates.find((t) => t.id === templateId);
@@ -915,15 +923,22 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   },
 
   addColor: (color) => {
-    const { pixelColors } = get();
-    set({ pixelColors: [...pixelColors, color] });
+    const { pixelColors, palettes, activePaletteId } = get();
+    const newColors = [...pixelColors, color];
+    const updatedPalettes = activePaletteId
+      ? palettes.map((p) => (p.id === activePaletteId ? { ...p, colors: newColors } : p))
+      : palettes;
+    set({ pixelColors: newColors, palettes: updatedPalettes });
   },
 
   removeColor: (index) => {
-    const { pixelColors } = get();
+    const { pixelColors, palettes, activePaletteId } = get();
     if (pixelColors.length <= 2) return;
     const newColors = pixelColors.filter((_, i) => i !== index);
-    set({ pixelColors: newColors });
+    const updatedPalettes = activePaletteId
+      ? palettes.map((p) => (p.id === activePaletteId ? { ...p, colors: newColors } : p))
+      : palettes;
+    set({ pixelColors: newColors, palettes: updatedPalettes });
   },
 
   setCharacterSize: (width, height) => {
@@ -1654,6 +1669,117 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
       character.height
     );
     return frames;
+  },
+
+  addPalette: (palette) => {
+    const id = generateId();
+    const newPalette: PaletteGroup = { ...palette, id };
+    set({ palettes: [...get().palettes, newPalette] });
+  },
+
+  removePalette: (paletteId) => {
+    const { palettes, activePaletteId, pixelColors } = get();
+    if (palettes.length <= 1) return;
+    const remaining = palettes.filter((p) => p.id !== paletteId);
+    let newActiveId = activePaletteId;
+    if (activePaletteId === paletteId) {
+      newActiveId = remaining[0]?.id || null;
+      if (newActiveId) {
+        const activePalette = remaining.find((p) => p.id === newActiveId);
+        set({
+          palettes: remaining,
+          activePaletteId: newActiveId,
+          pixelColors: activePalette ? [...activePalette.colors] : pixelColors,
+        });
+      }
+    } else {
+      set({ palettes: remaining });
+    }
+  },
+
+  renamePalette: (paletteId, name) => {
+    const { palettes } = get();
+    set({
+      palettes: palettes.map((p) => (p.id === paletteId ? { ...p, name } : p)),
+    });
+  },
+
+  setActivePalette: (paletteId) => {
+    const { palettes } = get();
+    const palette = palettes.find((p) => p.id === paletteId);
+    if (palette) {
+      set({ activePaletteId: paletteId, pixelColors: [...palette.colors] });
+    }
+  },
+
+  importPresetPalette: (presetId) => {
+    const preset = findPresetPalette(presetId);
+    if (!preset) return;
+    const { palettes } = get();
+    const exists = palettes.find((p) => p.presetId === presetId);
+    if (exists) {
+      set({ activePaletteId: exists.id, pixelColors: [...exists.colors] });
+      return;
+    }
+    const id = generateId();
+    const newPalette: PaletteGroup = {
+      id,
+      name: preset.name,
+      colors: [...preset.colors],
+      isPreset: true,
+      presetId: preset.id,
+    };
+    set({
+      palettes: [...palettes, newPalette],
+      activePaletteId: id,
+      pixelColors: [...preset.colors],
+    });
+  },
+
+  updatePaletteColors: (paletteId, colors) => {
+    const { palettes, activePaletteId } = get();
+    const updated = palettes.map((p) => (p.id === paletteId ? { ...p, colors } : p));
+    const stateUpdate: Partial<StoreState> = { palettes: updated };
+    if (activePaletteId === paletteId) {
+      stateUpdate.pixelColors = [...colors];
+    }
+    set(stateUpdate);
+  },
+
+  addColorToPalette: (paletteId, color) => {
+    const { palettes, activePaletteId } = get();
+    const palette = palettes.find((p) => p.id === paletteId);
+    if (!palette || palette.colors.includes(color)) return;
+    const updated = palettes.map((p) =>
+      p.id === paletteId ? { ...p, colors: [...p.colors, color] } : p
+    );
+    const stateUpdate: Partial<StoreState> = { palettes: updated };
+    if (activePaletteId === paletteId) {
+      stateUpdate.pixelColors = [...palette.colors, color];
+    }
+    set(stateUpdate);
+  },
+
+  removeColorFromPalette: (paletteId, colorIndex) => {
+    const { palettes, activePaletteId } = get();
+    const palette = palettes.find((p) => p.id === paletteId);
+    if (!palette || palette.colors.length <= 2) return;
+    const newColors = palette.colors.filter((_, i) => i !== colorIndex);
+    const updated = palettes.map((p) =>
+      p.id === paletteId ? { ...p, colors: newColors } : p
+    );
+    const stateUpdate: Partial<StoreState> = { palettes: updated };
+    if (activePaletteId === paletteId) {
+      stateUpdate.pixelColors = [...newColors];
+    }
+    set(stateUpdate);
+  },
+
+  switchToPalette: (paletteId) => {
+    const { palettes } = get();
+    const palette = palettes.find((p) => p.id === paletteId);
+    if (!palette) return;
+    set({ activePaletteId: paletteId, pixelColors: [...palette.colors] });
   },
 }));
 
