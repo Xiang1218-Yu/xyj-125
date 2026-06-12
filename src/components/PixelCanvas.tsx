@@ -454,7 +454,7 @@ const PixelCanvas = () => {
           <div className="flex items-center gap-2">
             <span className="text-[#3498db]">前帧:</span>
             <button
-              onClick={() => setOnionSkinPrevFrames(Math.max(0, onionSkinPrevFrames - 1)}
+              onClick={() => setOnionSkinPrevFrames(Math.max(0, onionSkinPrevFrames - 1))}
               className="w-5 h-5 rounded bg-[#0f3460] hover:bg-[#e94560] text-white transition-colors flex items-center justify-center"
             >
               -
