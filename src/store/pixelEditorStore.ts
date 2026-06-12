@@ -294,6 +294,9 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     isPreset: false,
   }],
   activePaletteId: loadPersistedPalettes()?.activePaletteId || 'default',
+  referenceImage: null,
+  referenceImageOpacity: 0.5,
+  referenceImageEnabled: false,
 
   applyTemplate: (templateId) => {
     const template = characterTemplates.find((t) => t.id === templateId);
@@ -1830,6 +1833,12 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
     if (!palette) return;
     set({ activePaletteId: paletteId, pixelColors: [...palette.colors] });
   },
+
+  setReferenceImage: (imageData) => set({ referenceImage: imageData }),
+
+  setReferenceImageOpacity: (opacity) => set({ referenceImageOpacity: Math.max(0.1, Math.min(1, opacity)) }),
+
+  setReferenceImageEnabled: (enabled) => set({ referenceImageEnabled: enabled }),
 }));
 
 setTimeout(() => {

@@ -1,10 +1,13 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
-import { Pencil, Eraser, PaintBucket, Grid3X3, ZoomIn, ZoomOut, Layers } from 'lucide-react';
+import { Pencil, Eraser, PaintBucket, Grid3X3, ZoomIn, ZoomOut, Layers, ImagePlus, Eye, EyeOff, X } from 'lucide-react';
 
 const PixelCanvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const referenceImgRef = useRef<HTMLImageElement | null>(null);
+  const [referenceImageLoaded, setReferenceImageLoaded] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastPos, setLastPos] = useState<{ x: number; y: number } | null>(null);
 
@@ -21,6 +24,9 @@ const PixelCanvas = () => {
     onionSkinPrevFrames,
     onionSkinNextFrames,
     onionSkinOpacity,
+    referenceImage,
+    referenceImageOpacity,
+    referenceImageEnabled,
     setPixel,
     setGridSize,
     setShowGrid,
@@ -29,6 +35,9 @@ const PixelCanvas = () => {
     setOnionSkinPrevFrames,
     setOnionSkinNextFrames,
     setOnionSkinOpacity,
+    setReferenceImage,
+    setReferenceImageOpacity,
+    setReferenceImageEnabled,
   } = usePixelEditorStore();
 
   const isDrawingRef = useRef(false);
@@ -167,6 +176,31 @@ const PixelCanvas = () => {
       }
     }
 
+    if (referenceImageEnabled && referenceImageLoaded && referenceImgRef.current) {
+      ctx.save();
+      ctx.globalAlpha = referenceImageOpacity;
+      ctx.imageSmoothingEnabled = true;
+      const img = referenceImgRef.current;
+      const canvasW = width * gridSize;
+      const canvasH = height * gridSize;
+      const imgAspect = img.width / img.height;
+      const canvasAspect = canvasW / canvasH;
+      let drawW: number, drawH: number, drawX: number, drawY: number;
+      if (imgAspect > canvasAspect) {
+        drawW = canvasW;
+        drawH = canvasW / imgAspect;
+        drawX = 0;
+        drawY = (canvasH - drawH) / 2;
+      } else {
+        drawH = canvasH;
+        drawW = canvasH * imgAspect;
+        drawX = (canvasW - drawW) / 2;
+        drawY = 0;
+      }
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+      ctx.restore();
+    }
+
     if (onionSkinEnabled) {
       const { prevFrames, nextFrames } = getAdjacentFrames();
 
@@ -201,11 +235,30 @@ const PixelCanvas = () => {
         ctx.stroke();
       }
     }
-  }, [character, gridSize, showGrid, pixelColors, getCurrentFrame, onionSkinEnabled, onionSkinOpacity, getAdjacentFrames]);
+  }, [character, gridSize, showGrid, pixelColors, getCurrentFrame, onionSkinEnabled, onionSkinOpacity, getAdjacentFrames, referenceImageEnabled, referenceImageLoaded, referenceImageOpacity]);
 
   useEffect(() => {
     drawCanvas();
-  }, [drawCanvas, currentFrameId, currentActionId, currentLayerId, character, gridSize, showGrid, pixelColors, selectedTool, onionSkinEnabled, onionSkinPrevFrames, onionSkinNextFrames, onionSkinOpacity]);
+  }, [drawCanvas, currentFrameId, currentActionId, currentLayerId, character, gridSize, showGrid, pixelColors, selectedTool, onionSkinEnabled, onionSkinPrevFrames, onionSkinNextFrames, onionSkinOpacity, referenceImageEnabled, referenceImageLoaded, referenceImageOpacity]);
+
+  useEffect(() => {
+    if (!referenceImage) {
+      referenceImgRef.current = null;
+      setReferenceImageLoaded(false);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      referenceImgRef.current = img;
+      setReferenceImageLoaded(true);
+    };
+    img.onerror = () => {
+      console.error('Failed to load reference image');
+      referenceImgRef.current = null;
+      setReferenceImageLoaded(false);
+    };
+    img.src = referenceImage;
+  }, [referenceImage]);
 
   const getPixelPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -269,6 +322,35 @@ const PixelCanvas = () => {
     setLastPos(null);
   };
 
+  const handleReferenceImageClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('请选择图片文件');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setReferenceImage(result);
+      setReferenceImageEnabled(true);
+    };
+    reader.onerror = () => {
+      alert('读取图片失败');
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleClearReferenceImage = () => {
+    setReferenceImage(null);
+    setReferenceImageEnabled(false);
+  };
+
   const tools = [
     { id: 'pencil', icon: Pencil, label: '画笔' },
     { id: 'eraser', icon: Eraser, label: '橡皮' },
@@ -312,6 +394,43 @@ const PixelCanvas = () => {
           >
             <Layers size={18} />
           </button>
+          <div className="w-px h-6 bg-[#1a1a2e] mx-2" />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button
+            onClick={handleReferenceImageClick}
+            className={`p-2 rounded transition-colors ${
+              referenceImage ? 'text-[#2ecc71] hover:bg-[#1a1a2e]' : 'text-gray-400 hover:bg-[#1a1a2e] hover:text-white'
+            }`}
+            title="导入参考图"
+          >
+            <ImagePlus size={18} />
+          </button>
+          {referenceImage && (
+            <>
+              <button
+                onClick={() => setReferenceImageEnabled(!referenceImageEnabled)}
+                className={`p-2 rounded transition-colors ${
+                  referenceImageEnabled ? 'bg-[#e94560] text-white' : 'text-gray-400 hover:bg-[#1a1a2e] hover:text-white'
+                }`}
+                title={referenceImageEnabled ? '隐藏参考图' : '显示参考图'}
+              >
+                {referenceImageEnabled ? <Eye size={18} /> : <EyeOff size={18} />}
+              </button>
+              <button
+                onClick={handleClearReferenceImage}
+                className="p-2 rounded text-gray-400 hover:bg-[#1a1a2e] hover:text-[#e74c3c] transition-colors"
+                title="移除参考图"
+              >
+                <X size={18} />
+              </button>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -335,7 +454,7 @@ const PixelCanvas = () => {
           <div className="flex items-center gap-2">
             <span className="text-[#3498db]">前帧:</span>
             <button
-              onClick={() => setOnionSkinPrevFrames(Math.max(0, onionSkinPrevFrames - 1))}
+              onClick={() => setOnionSkinPrevFrames(Math.max(0, onionSkinPrevFrames - 1)}
               className="w-5 h-5 rounded bg-[#0f3460] hover:bg-[#e94560] text-white transition-colors flex items-center justify-center"
             >
               -
@@ -376,6 +495,25 @@ const PixelCanvas = () => {
               className="flex-1 h-1 bg-[#0f3460] rounded-lg appearance-none cursor-pointer accent-[#e94560]"
             />
             <span className="w-8 text-center">{Math.round(onionSkinOpacity * 100)}%</span>
+          </div>
+        </div>
+      )}
+
+      {referenceImage && referenceImageEnabled && (
+        <div className="flex items-center gap-4 px-3 py-2 bg-[#1a1a2e] border-b border-[#0f3460] text-xs text-gray-300">
+          <div className="flex items-center gap-2 flex-1">
+            <ImagePlus size={14} className="text-[#2ecc71]" />
+            <span className="text-[#2ecc71]">参考图透明度:</span>
+            <input
+              type="range"
+              min="0.1"
+              max="1"
+              step="0.05"
+              value={referenceImageOpacity}
+              onChange={(e) => setReferenceImageOpacity(parseFloat(e.target.value))}
+              className="flex-1 h-1 bg-[#0f3460] rounded-lg appearance-none cursor-pointer accent-[#2ecc71]"
+            />
+            <span className="w-8 text-center">{Math.round(referenceImageOpacity * 100)}%</span>
           </div>
         </div>
       )}

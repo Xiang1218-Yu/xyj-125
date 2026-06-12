@@ -90,6 +90,9 @@ export interface PixelEditorState {
   tweenFrameIds: string[];
   palettes: PaletteGroup[];
   activePaletteId: string | null;
+  referenceImage: string | null;
+  referenceImageOpacity: number;
+  referenceImageEnabled: boolean;
 }
 
 export interface PixelEditorActions {
@@ -202,4 +205,7 @@ export interface PixelEditorActions {
   addColorToPalette: (paletteId: string, color: string) => void;
   removeColorFromPalette: (paletteId: string, colorIndex: number) => void;
   switchToPalette: (paletteId: string) => void;
+  setReferenceImage: (imageData: string | null) => void;
+  setReferenceImageOpacity: (opacity: number) => void;
+  setReferenceImageEnabled: (enabled: boolean) => void;
 }
