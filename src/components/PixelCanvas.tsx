@@ -17,6 +17,7 @@ const PixelCanvas = () => {
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
   const [currentPos, setCurrentPos] = useState<{ x: number; y: number } | null>(null);
   const [fillShapes, setFillShapes] = useState(false);
+  const [eyedropperFeedback, setEyedropperFeedback] = useState<string | null>(null);
 
   const {
     character,
@@ -384,7 +385,11 @@ const PixelCanvas = () => {
         const mergedPixels = state.getFrameMergedPixels(frame);
         const colorIndex = mergedPixels[pos.y]?.[pos.x];
         if (colorIndex !== undefined && colorIndex >= 0 && colorIndex < pixelColors.length) {
-          setCurrentColor(pixelColors[colorIndex]);
+          const color = pixelColors[colorIndex];
+          setCurrentColor(color);
+          setEyedropperFeedback(color);
+          setSelectedTool('pencil' as Parameters<typeof setSelectedTool>[0]);
+          setTimeout(() => setEyedropperFeedback(null), 1000);
         }
       }
       return;
@@ -534,6 +539,12 @@ const PixelCanvas = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selection, clipboardPixels, selectedTool, copySelection, cutSelection, pasteClipboard, deleteSelection, setSelection]);
+
+  useEffect(() => {
+    if (selectedTool !== 'select' && selection) {
+      setSelection(null);
+    }
+  }, [selectedTool, selection, setSelection]);
 
   const handleReferenceImageClick = () => {
     fileInputRef.current?.click();
@@ -843,7 +854,17 @@ const PixelCanvas = () => {
         </div>
       )}
 
-      <div ref={containerRef} className="flex-1 flex items-center justify-center overflow-auto p-4">
+      <div ref={containerRef} className="flex-1 flex items-center justify-center overflow-auto p-4 relative">
+        {eyedropperFeedback && (
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 bg-[#0f3460] border border-[#e94560] rounded-lg shadow-lg animate-pulse">
+            <span className="text-xs text-gray-300">取色成功:</span>
+            <div
+              className="w-5 h-5 rounded border border-gray-500"
+              style={{ backgroundColor: eyedropperFeedback }}
+            />
+            <span className="text-xs text-gray-300 font-mono uppercase">{eyedropperFeedback}</span>
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           onMouseDown={handleMouseDown}
