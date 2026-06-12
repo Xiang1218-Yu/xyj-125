@@ -76,45 +76,6 @@ export const usePixelEditorStore = create<StoreState>((set, get, api) => {
   const initialCharacter = createSampleCharacter();
   const initialHistory = [cloneCharacter(initialCharacter)];
 
-  const baseStore: FullStore = {
-    ...createCharacterSlice(set as any, get as any, api as any),
-    ...createDrawingSlice(set as any, get as any, api as any),
-    ...createHistorySlice(set as any, get as any, api as any),
-    ...createPaletteSlice(set as any, get as any, api as any),
-    ...createSaveSlice(set as any, get as any, api as any),
-    ...createTransformSlice(set as any, get as any, api as any),
-    ...createUiSlice(set as any, get as any, api as any),
-  };
-
-  const storeWithHistory = wrapWithHistory(baseStore, () => get().pushHistory());
-
-  const resetCharacter = (): void => {
-    const newCharacter = createSampleCharacter();
-    const firstAction = newCharacter.actions[0];
-    const firstFrame = firstAction.frames[0];
-    const newHistory = [cloneCharacter(newCharacter)];
-    const resetPalettes = [{
-      id: 'default',
-      name: '默认调色板',
-      colors: [...defaultColors],
-      isPreset: false,
-    }];
-    set({
-      character: newCharacter,
-      currentActionId: firstAction.id,
-      currentFrameId: firstFrame.id,
-      currentLayerId: firstFrame.layers[0].id,
-      history: newHistory,
-      historyIndex: 0,
-      currentSaveName: null,
-      lastSavedTime: null,
-      selectedFrameIds: [],
-      pixelColors: [...defaultColors],
-      palettes: resetPalettes,
-      activePaletteId: 'default',
-    });
-  };
-
   const generateParticleAnimation = (config: {
     type: string;
     frameCount: number;
@@ -198,6 +159,46 @@ export const usePixelEditorStore = create<StoreState>((set, get, api) => {
     return true;
   };
 
+  const baseStore: FullStore = {
+    ...createCharacterSlice(set as any, get as any, api as any),
+    ...createDrawingSlice(set as any, get as any, api as any),
+    ...createHistorySlice(set as any, get as any, api as any),
+    ...createPaletteSlice(set as any, get as any, api as any),
+    ...createSaveSlice(set as any, get as any, api as any),
+    ...createTransformSlice(set as any, get as any, api as any),
+    ...createUiSlice(set as any, get as any, api as any),
+    generateParticleAnimation,
+  };
+
+  const storeWithHistory = wrapWithHistory(baseStore, () => get().pushHistory());
+
+  const resetCharacter = (): void => {
+    const newCharacter = createSampleCharacter();
+    const firstAction = newCharacter.actions[0];
+    const firstFrame = firstAction.frames[0];
+    const newHistory = [cloneCharacter(newCharacter)];
+    const resetPalettes = [{
+      id: 'default',
+      name: '默认调色板',
+      colors: [...defaultColors],
+      isPreset: false,
+    }];
+    set({
+      character: newCharacter,
+      currentActionId: firstAction.id,
+      currentFrameId: firstFrame.id,
+      currentLayerId: firstFrame.layers[0].id,
+      history: newHistory,
+      historyIndex: 0,
+      currentSaveName: null,
+      lastSavedTime: null,
+      selectedFrameIds: [],
+      pixelColors: [...defaultColors],
+      palettes: resetPalettes,
+      activePaletteId: 'default',
+    });
+  };
+
   setTimeout(() => {
     const state = usePixelEditorStore.getState();
     if (state.character.actions.length > 0) {
@@ -219,7 +220,6 @@ export const usePixelEditorStore = create<StoreState>((set, get, api) => {
     history: initialHistory,
     historyIndex: 0,
     resetCharacter,
-    generateParticleAnimation,
   };
 });
 

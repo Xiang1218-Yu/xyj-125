@@ -27,4 +27,15 @@ export default defineConfig({
     }), 
     tsconfigPaths()
   ],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
+      include: ['src/store/**/*.ts'],
+      exclude: ['src/store/index.ts', 'src/store/slices/index.ts'],
+    },
+  },
 })
