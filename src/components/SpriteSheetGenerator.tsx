@@ -1,16 +1,32 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
-import { Download, Grid3X3, FileJson, Image, Copy, Check } from 'lucide-react';
+import { Download, Grid3X3, FileJson, Image, Copy, Check, Film } from 'lucide-react';
+import { buildTweenPlaybackFrames } from '@/utils/frameTweener';
+import { encodeGif, type GifFrame } from '@/utils/gifEncoder';
+import type { Frame } from '@/types/animation';
 
 const SpriteSheetGenerator = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [scale, setScale] = useState(4);
   const [exportScale, setExportScale] = useState(1);
+  const [gifScale, setGifScale] = useState(4);
   const [showAllActions, setShowAllActions] = useState(false);
   const [copied, setCopied] = useState(false);
   const [columns, setColumns] = useState(0);
+  const [gifExporting, setGifExporting] = useState(false);
+  const [gifWithTransparency, setGifWithTransparency] = useState(false);
 
-  const { character, currentActionId, generateSpriteSheet, pixelColors } = usePixelEditorStore();
+  const {
+    character,
+    currentActionId,
+    generateSpriteSheet,
+    pixelColors,
+    tweenEnabled,
+    tweenMode,
+    tweenSteps,
+    tweenFrameIds,
+    fps,
+  } = usePixelEditorStore();
 
   const currentAction = character.actions.find((a) => a.id === currentActionId);
 
@@ -168,9 +184,140 @@ const SpriteSheetGenerator = () => {
     }
   };
 
+  const drawFrameToCanvas = useCallback(
+    (frame: Frame, scaleFactor: number, withTransparency: boolean): ImageData => {
+      const canvas = document.createElement('canvas');
+      canvas.width = character.width * scaleFactor;
+      canvas.height = character.height * scaleFactor;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('无法获取 canvas 上下文');
+
+      ctx.imageSmoothingEnabled = false;
+
+      if (!withTransparency) {
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      for (const layer of frame.layers) {
+        if (!layer.visible) continue;
+        for (let y = 0; y < character.height; y++) {
+          for (let x = 0; x < character.width; x++) {
+            const colorIndex = layer.pixels[y][x];
+            if (colorIndex >= 0 && colorIndex < pixelColors.length) {
+              ctx.globalAlpha = layer.opacity;
+              ctx.fillStyle = pixelColors[colorIndex];
+              ctx.fillRect(
+                x * scaleFactor,
+                y * scaleFactor,
+                scaleFactor,
+                scaleFactor
+              );
+              ctx.globalAlpha = 1;
+            }
+          }
+        }
+      }
+
+      return ctx.getImageData(0, 0, canvas.width, canvas.height);
+    },
+    [character, pixelColors]
+  );
+
+  const getPlaybackFramesForAction = useCallback(
+    (action: { frames: Frame[]; loop: boolean }): { frames: Frame[]; delays: number[] } => {
+      const originalFrames = action.frames;
+      const defaultDelay = Math.round(1000 / fps);
+
+      if (!tweenEnabled || originalFrames.length < 2) {
+        return {
+          frames: originalFrames,
+          delays: originalFrames.map((f) => f.delay || defaultDelay),
+        };
+      }
+
+      const playbackData = buildTweenPlaybackFrames(
+        originalFrames,
+        tweenFrameIds,
+        tweenSteps,
+        tweenMode,
+        pixelColors,
+        character.width,
+        character.height
+      );
+
+      return {
+        frames: playbackData.frames,
+        delays: playbackData.frames.map((f, i) => {
+          const originalIndex = playbackData.originalIndices[i];
+          const originalFrame = originalFrames[originalIndex];
+          return originalFrame?.delay || defaultDelay;
+        }),
+      };
+    },
+    [tweenEnabled, tweenFrameIds, tweenSteps, tweenMode, pixelColors, character.width, character.height, fps]
+  );
+
+  const handleExportGIF = useCallback(async () => {
+    const actions = showAllActions ? character.actions : character.actions.filter((a) => a.id === currentActionId);
+    if (actions.length === 0) return;
+
+    setGifExporting(true);
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const gifFrames: GifFrame[] = [];
+      const scaleFactor = gifScale;
+
+      for (const action of actions) {
+        const { frames, delays } = getPlaybackFramesForAction(action);
+        for (let i = 0; i < frames.length; i++) {
+          const frame = frames[i];
+          const imageData = drawFrameToCanvas(frame, scaleFactor, gifWithTransparency);
+          gifFrames.push({
+            imageData,
+            delay: delays[i],
+          });
+        }
+      }
+
+      if (gifFrames.length === 0) {
+        throw new Error('没有可导出的帧');
+      }
+
+      const width = character.width * scaleFactor;
+      const height = character.height * scaleFactor;
+
+      const blob = encodeGif(width, height, gifFrames);
+
+      const link = document.createElement('a');
+      const actionName = showAllActions ? 'all' : (currentAction?.name || 'animation');
+      link.download = `${character.name}_${actionName}.gif`;
+      link.href = URL.createObjectURL(blob);
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (err) {
+      console.error('GIF 导出失败:', err);
+      alert('GIF 导出失败，请重试');
+    } finally {
+      setGifExporting(false);
+    }
+  }, [showAllActions, character, currentActionId, currentAction, gifScale, gifWithTransparency, getPlaybackFramesForAction, drawFrameToCanvas]);
+
   const totalFrames = showAllActions
     ? character.actions.reduce((sum, a) => sum + a.frames.length, 0)
     : currentAction?.frames.length || 0;
+
+  const gifFrameCount = useMemo(() => {
+    const actions = showAllActions ? character.actions : character.actions.filter((a) => a.id === currentActionId);
+    let count = 0;
+    for (const action of actions) {
+      const { frames } = getPlaybackFramesForAction(action);
+      count += frames.length;
+    }
+    return count;
+  }, [showAllActions, character, currentActionId, getPlaybackFramesForAction]);
 
   return (
     <div className="bg-[#16213e] rounded-lg border border-[#0f3460] p-3">
@@ -270,6 +417,62 @@ const SpriteSheetGenerator = () => {
           <Download size={14} />
           导出全部 (PNG + JSON)
         </button>
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-[#0f3460]">
+        <div className="flex items-center gap-2 mb-3">
+          <Film size={14} className="text-[#f39c12]" />
+          <h4 className="text-sm font-medium text-gray-300 pixel-font text-xs">GIF 动画导出</h4>
+          {tweenEnabled && (
+            <span className="text-[10px] px-1.5 py-0.5 bg-[#9b59b6]/20 text-[#9b59b6] rounded">含补间</span>
+          )}
+        </div>
+
+        <div className="space-y-2 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 w-16">GIF缩放:</span>
+            <input
+              type="range"
+              min={1}
+              max={16}
+              value={gifScale}
+              onChange={(e) => setGifScale(parseInt(e.target.value))}
+              className="flex-1 accent-[#f39c12]"
+            />
+            <span className="text-xs text-gray-400 w-8 text-right">{gifScale}x</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 w-16">透明背景:</span>
+            <label className="flex items-center gap-2 cursor-pointer flex-1">
+              <input
+                type="checkbox"
+                checked={gifWithTransparency}
+                onChange={(e) => setGifWithTransparency(e.target.checked)}
+                className="w-4 h-4 accent-[#f39c12]"
+              />
+              <span className="text-xs text-gray-400">启用透明背景</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="text-xs text-gray-500 mb-3 flex justify-between">
+          <span>GIF帧数: {gifFrameCount}</span>
+          <span>
+            尺寸: {character.width * gifScale} × {character.height * gifScale}
+          </span>
+        </div>
+
+        <button
+          onClick={handleExportGIF}
+          disabled={gifFrameCount === 0 || gifExporting}
+          className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[#f39c12] text-white rounded text-sm hover:bg-[#e67e22] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Film size={14} />
+          {gifExporting ? '导出中...' : '导出 GIF 动画'}
+        </button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           onClick={copyFrameDataToClipboard}
           className="col-span-2 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-[#0f3460] text-gray-300 rounded text-xs hover:bg-[#1a1a2e] transition-colors"
