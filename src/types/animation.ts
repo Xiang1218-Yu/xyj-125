@@ -66,7 +66,9 @@ export interface PixelEditorState {
   currentActionId: string | null;
   currentFrameId: string | null;
   currentLayerId: string | null;
-  selectedTool: 'pencil' | 'eraser' | 'bucket';
+  selectedTool: 'pencil' | 'eraser' | 'bucket' | 'line' | 'rectangle' | 'ellipse' | 'select' | 'eyedropper';
+  selection: { x: number; y: number; width: number; height: number } | null;
+  clipboardPixels: number[][] | null;
   currentColor: string;
   gridSize: number;
   showGrid: boolean;
@@ -208,4 +210,13 @@ export interface PixelEditorActions {
   setReferenceImage: (imageData: string | null) => void;
   setReferenceImageOpacity: (opacity: number) => void;
   setReferenceImageEnabled: (enabled: boolean) => void;
+  setSelection: (selection: { x: number; y: number; width: number; height: number } | null) => void;
+  setClipboardPixels: (pixels: number[][] | null) => void;
+  copySelection: () => void;
+  cutSelection: () => void;
+  pasteClipboard: (x: number, y: number) => void;
+  deleteSelection: () => void;
+  drawLine: (x1: number, y1: number, x2: number, y2: number, colorIndex: number) => void;
+  drawRectangle: (x1: number, y1: number, x2: number, y2: number, colorIndex: number, fill?: boolean) => void;
+  drawEllipse: (x1: number, y1: number, x2: number, y2: number, colorIndex: number, fill?: boolean) => void;
 }

@@ -265,7 +265,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   currentActionId: null,
   currentFrameId: null,
   currentLayerId: null,
-  selectedTool: 'pencil' as const,
+  selectedTool: 'pencil' as PixelEditorState['selectedTool'],
   currentColor: '#000000',
   gridSize: 20,
   showGrid: true,
@@ -297,6 +297,8 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   referenceImage: null,
   referenceImageOpacity: 0.5,
   referenceImageEnabled: false,
+  selection: null,
+  clipboardPixels: null,
 
   applyTemplate: (templateId) => {
     const template = characterTemplates.find((t) => t.id === templateId);
@@ -386,7 +388,7 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
 
   setCurrentColor: (color) => set({ currentColor: color }),
 
-  setSelectedTool: (tool) => set({ selectedTool: tool }),
+  setSelectedTool: (tool: PixelEditorState['selectedTool']) => set({ selectedTool: tool }),
 
   setGridSize: (size) => set({ gridSize: size }),
 
@@ -1839,6 +1841,287 @@ export const usePixelEditorStore = create<StoreState>((set, get) => ({
   setReferenceImageOpacity: (opacity) => set({ referenceImageOpacity: Math.max(0.1, Math.min(1, opacity)) }),
 
   setReferenceImageEnabled: (enabled) => set({ referenceImageEnabled: enabled }),
+
+  setSelection: (selection) => set({ selection }),
+
+  setClipboardPixels: (pixels) => set({ clipboardPixels: pixels }),
+
+  drawLine: (x1, y1, x2, y2, colorIndex) => {
+    const { character, currentActionId, currentFrameId, currentLayerId, selectedTool } = get();
+    if (!currentActionId || !currentFrameId || !currentLayerId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layer = frame.layers.find((l) => l.id === currentLayerId);
+    if (!layer || layer.locked) return;
+
+    const dx = Math.abs(x2 - x1);
+    const dy = Math.abs(y2 - y1);
+    const sx = x1 < x2 ? 1 : -1;
+    const sy = y1 < y2 ? 1 : -1;
+    let err = dx - dy;
+    let x = x1;
+    let y = y1;
+
+    while (true) {
+      if (x >= 0 && x < character.width && y >= 0 && y < character.height) {
+        if (selectedTool === 'eraser') {
+          layer.pixels[y][x] = -1;
+        } else {
+          layer.pixels[y][x] = colorIndex;
+        }
+      }
+      if (x === x2 && y === y2) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        x += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        y += sy;
+      }
+    }
+
+    set({ character: newCharacter });
+  },
+
+  drawRectangle: (x1, y1, x2, y2, colorIndex, fill = false) => {
+    const { character, currentActionId, currentFrameId, currentLayerId, selectedTool } = get();
+    if (!currentActionId || !currentFrameId || !currentLayerId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layer = frame.layers.find((l) => l.id === currentLayerId);
+    if (!layer || layer.locked) return;
+
+    const minX = Math.max(0, Math.min(x1, x2));
+    const maxX = Math.min(character.width - 1, Math.max(x1, x2));
+    const minY = Math.max(0, Math.min(y1, y2));
+    const maxY = Math.min(character.height - 1, Math.max(y1, y2));
+
+    const value = selectedTool === 'eraser' ? -1 : colorIndex;
+
+    if (fill) {
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          layer.pixels[y][x] = value;
+        }
+      }
+    } else {
+      for (let x = minX; x <= maxX; x++) {
+        layer.pixels[minY][x] = value;
+        layer.pixels[maxY][x] = value;
+      }
+      for (let y = minY; y <= maxY; y++) {
+        layer.pixels[y][minX] = value;
+        layer.pixels[y][maxX] = value;
+      }
+    }
+
+    set({ character: newCharacter });
+  },
+
+  drawEllipse: (x1, y1, x2, y2, colorIndex, fill = false) => {
+    const { character, currentActionId, currentFrameId, currentLayerId, selectedTool } = get();
+    if (!currentActionId || !currentFrameId || !currentLayerId) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layer = frame.layers.find((l) => l.id === currentLayerId);
+    if (!layer || layer.locked) return;
+
+    const centerX = Math.round((x1 + x2) / 2);
+    const centerY = Math.round((y1 + y2) / 2);
+    const rx = Math.abs(Math.round((x2 - x1) / 2));
+    const ry = Math.abs(Math.round((y2 - y1) / 2));
+
+    if (rx <= 0 || ry <= 0) return;
+
+    const value = selectedTool === 'eraser' ? -1 : colorIndex;
+
+    const setPixel = (x: number, y: number) => {
+      if (x >= 0 && x < character.width && y >= 0 && y < character.height) {
+        layer.pixels[y][x] = value;
+      }
+    };
+
+    if (fill) {
+      for (let y = -ry; y <= ry; y++) {
+        for (let x = -rx; x <= rx; x++) {
+          if ((x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1) {
+            setPixel(centerX + x, centerY + y);
+          }
+        }
+      }
+    } else {
+      let x = 0;
+      let y = ry;
+      let d1 = ry * ry - rx * rx * ry + 0.25 * rx * rx;
+      let dx = 2 * ry * ry * x;
+      let dy = 2 * rx * rx * y;
+
+      while (dx < dy) {
+        setPixel(centerX + x, centerY + y);
+        setPixel(centerX - x, centerY + y);
+        setPixel(centerX + x, centerY - y);
+        setPixel(centerX - x, centerY - y);
+
+        if (d1 < 0) {
+          x++;
+          dx = 2 * ry * ry * x;
+          d1 = d1 + dx + ry * ry;
+        } else {
+          x++;
+          y--;
+          dx = 2 * ry * ry * x;
+          dy = 2 * rx * rx * y;
+          d1 = d1 + dx - dy + ry * ry;
+        }
+      }
+
+      let d2 = ry * ry * (x + 0.5) * (x + 0.5) + rx * rx * (y - 1) * (y - 1) - rx * rx * ry * ry;
+
+      while (y >= 0) {
+        setPixel(centerX + x, centerY + y);
+        setPixel(centerX - x, centerY + y);
+        setPixel(centerX + x, centerY - y);
+        setPixel(centerX - x, centerY - y);
+
+        if (d2 > 0) {
+          y--;
+          dy = 2 * rx * rx * y;
+          d2 = d2 + rx * rx - dy;
+        } else {
+          y--;
+          x++;
+          dx = 2 * ry * ry * x;
+          dy = 2 * rx * rx * y;
+          d2 = d2 + dx - dy + rx * rx;
+        }
+      }
+    }
+
+    set({ character: newCharacter });
+  },
+
+  copySelection: () => {
+    const { character, currentActionId, currentFrameId, currentLayerId, selection } = get();
+    if (!currentActionId || !currentFrameId || !currentLayerId || !selection) return;
+
+    const action = character.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layer = frame.layers.find((l) => l.id === currentLayerId);
+    if (!layer) return;
+
+    const { x, y, width, height } = selection;
+    const copied: number[][] = [];
+
+    for (let py = 0; py < height; py++) {
+      const row: number[] = [];
+      for (let px = 0; px < width; px++) {
+        const srcX = x + px;
+        const srcY = y + py;
+        if (srcX >= 0 && srcX < character.width && srcY >= 0 && srcY < character.height) {
+          row.push(layer.pixels[srcY][srcX]);
+        } else {
+          row.push(-1);
+        }
+      }
+      copied.push(row);
+    }
+
+    set({ clipboardPixels: copied });
+  },
+
+  cutSelection: () => {
+    const { copySelection, deleteSelection } = get();
+    copySelection();
+    deleteSelection();
+  },
+
+  pasteClipboard: (x, y) => {
+    const { character, currentActionId, currentFrameId, currentLayerId, clipboardPixels } = get();
+    if (!currentActionId || !currentFrameId || !currentLayerId || !clipboardPixels) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layer = frame.layers.find((l) => l.id === currentLayerId);
+    if (!layer || layer.locked) return;
+
+    const h = clipboardPixels.length;
+    const w = clipboardPixels[0]?.length || 0;
+
+    for (let py = 0; py < h; py++) {
+      for (let px = 0; px < w; px++) {
+        const dstX = x + px;
+        const dstY = y + py;
+        if (dstX >= 0 && dstX < character.width && dstY >= 0 && dstY < character.height) {
+          const color = clipboardPixels[py][px];
+          if (color !== -1) {
+            layer.pixels[dstY][dstX] = color;
+          }
+        }
+      }
+    }
+
+    set({ character: newCharacter });
+    setTimeout(() => get().pushHistory(), 0);
+  },
+
+  deleteSelection: () => {
+    const { character, currentActionId, currentFrameId, currentLayerId, selection } = get();
+    if (!currentActionId || !currentFrameId || !currentLayerId || !selection) return;
+
+    const newCharacter = JSON.parse(JSON.stringify(character)) as Character;
+    const action = newCharacter.actions.find((a) => a.id === currentActionId);
+    if (!action) return;
+
+    const frame = action.frames.find((f) => f.id === currentFrameId);
+    if (!frame) return;
+
+    const layer = frame.layers.find((l) => l.id === currentLayerId);
+    if (!layer || layer.locked) return;
+
+    const { x, y, width, height } = selection;
+
+    for (let py = 0; py < height; py++) {
+      for (let px = 0; px < width; px++) {
+        const dstX = x + px;
+        const dstY = y + py;
+        if (dstX >= 0 && dstX < character.width && dstY >= 0 && dstY < character.height) {
+          layer.pixels[dstY][dstX] = -1;
+        }
+      }
+    }
+
+    set({ character: newCharacter, selection: null });
+    setTimeout(() => get().pushHistory(), 0);
+  },
 }));
 
 setTimeout(() => {
