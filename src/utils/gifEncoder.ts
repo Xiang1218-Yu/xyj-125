@@ -61,7 +61,6 @@ function buildPaletteAndIndices(
 
   if (colors.length === 0) {
     colors.push(0x1a1a2e);
-    colors.push(0x000000);
   }
 
   let paletteSizeBits = 1;
@@ -112,135 +111,77 @@ function findClosestColor(r: number, g: number, b: number, colors: number[]): nu
   return best;
 }
 
-class LZWCompressor {
-  private minCodeSize: number;
-  private clearCode: number;
-  private eofCode: number;
-  private codeBits: number;
-  private maxCode: number;
-  private nextCode: number;
-  private codeTable: Int32Array;
-  private hashTable: Int32Array;
-  private output: number[] = [];
-  private accumulator = 0;
-  private bitsInAccum = 0;
-  private static readonly MAX_BITS = 12;
-  private static readonly TABLE_SIZE = 5021;
+function lzwCompress(indices: Uint8Array, minCodeSize: number): number[] {
+  const output: number[] = [];
+  const clearCode = 1 << minCodeSize;
+  const eofCode = clearCode + 1;
+  const initialCodeSize = minCodeSize + 1;
+  let codeSize = initialCodeSize;
+  let nextCode = eofCode + 1;
+  let maxCode = (1 << codeSize) - 1;
 
-  constructor(minCodeSize: number) {
-    this.minCodeSize = minCodeSize;
-    this.clearCode = 1 << minCodeSize;
-    this.eofCode = this.clearCode + 1;
-    this.codeTable = new Int32Array(LZWCompressor.TABLE_SIZE);
-    this.hashTable = new Int32Array(LZWCompressor.TABLE_SIZE);
-    this.reset();
-  }
+  const dict: Map<number, number> = new Map();
+  const dictReset = () => {
+    dict.clear();
+    for (let i = 0; i < clearCode; i++) dict.set(i, i);
+    nextCode = eofCode + 1;
+    codeSize = initialCodeSize;
+    maxCode = (1 << codeSize) - 1;
+  };
+  dictReset();
 
-  private reset(): void {
-    this.codeTable.fill(-1);
-    this.hashTable.fill(-1);
-    this.nextCode = this.clearCode + 2;
-    this.codeBits = this.minCodeSize + 1;
-    this.maxCode = (1 << this.codeBits) - 1;
-  }
-
-  private writeCode(code: number): void {
-    this.accumulator |= code << this.bitsInAccum;
-    this.bitsInAccum += this.codeBits;
-    while (this.bitsInAccum >= 8) {
-      this.output.push(this.accumulator & 0xff);
-      this.accumulator >>= 8;
-      this.bitsInAccum -= 8;
+  let bitBuf = 0;
+  let bitCount = 0;
+  const writeBits = (code: number) => {
+    bitBuf |= code << bitCount;
+    bitCount += codeSize;
+    while (bitCount >= 8) {
+      output.push(bitBuf & 0xff);
+      bitBuf >>>= 8;
+      bitCount -= 8;
     }
+  };
+
+  writeBits(clearCode);
+
+  const len = indices.length;
+  if (len === 0) {
+    writeBits(eofCode);
+    if (bitCount > 0) output.push(bitBuf & 0xff);
+    return output;
   }
 
-  private findHash(prefix: number, suffix: number): number {
-    const key = (suffix << LZWCompressor.MAX_BITS) + prefix;
-    let hash = (suffix << 3) ^ prefix;
-    if (hash < 0) hash += LZWCompressor.TABLE_SIZE;
-    const probe = LZWCompressor.TABLE_SIZE - hash;
+  let w = indices[0] | 0;
 
-    while (true) {
-      if (this.hashTable[hash] === key) {
-        return this.codeTable[hash];
-      }
-      if (this.hashTable[hash] < 0) {
-        return -1;
-      }
-      hash -= probe;
-      if (hash < 0) hash += LZWCompressor.TABLE_SIZE;
-    }
-  }
-
-  private addHash(prefix: number, suffix: number, code: number): void {
-    const key = (suffix << LZWCompressor.MAX_BITS) + prefix;
-    let hash = (suffix << 3) ^ prefix;
-    if (hash < 0) hash += LZWCompressor.TABLE_SIZE;
-    const probe = LZWCompressor.TABLE_SIZE - hash;
-
-    while (true) {
-      if (this.hashTable[hash] < 0) {
-        this.hashTable[hash] = key;
-        this.codeTable[hash] = code;
-        return;
-      }
-      hash -= probe;
-      if (hash < 0) hash += LZWCompressor.TABLE_SIZE;
-    }
-  }
-
-  compress(indices: Uint8Array): number[] {
-    this.output = [];
-    this.accumulator = 0;
-    this.bitsInAccum = 0;
-    this.reset();
-
-    this.writeCode(this.clearCode);
-
-    if (indices.length === 0) {
-      this.writeCode(this.eofCode);
-      if (this.bitsInAccum > 0) {
-        this.output.push(this.accumulator & 0xff);
-      }
-      return this.output;
-    }
-
-    let current = indices[0];
-
-    for (let i = 1; i < indices.length; i++) {
-      const c = indices[i];
-      const found = this.findHash(current, c);
-
-      if (found !== -1) {
-        current = found;
-      } else {
-        this.writeCode(current);
-
-        if (this.nextCode < 4096) {
-          this.addHash(current, c, this.nextCode);
-          this.nextCode++;
-          if (this.nextCode > this.maxCode && this.codeBits < LZWCompressor.MAX_BITS) {
-            this.codeBits++;
-            this.maxCode = (1 << this.codeBits) - 1;
-          }
-        } else {
-          this.writeCode(this.clearCode);
-          this.reset();
+  for (let i = 1; i < len; i++) {
+    const k = indices[i] | 0;
+    const key = (w << 12) | k;
+    const v = dict.get(key);
+    if (v !== undefined) {
+      w = v;
+    } else {
+      writeBits(w);
+      if (nextCode < 4096) {
+        dict.set(key, nextCode);
+        nextCode++;
+        if ((nextCode - 1) > maxCode && codeSize < 12) {
+          codeSize++;
+          maxCode = (1 << codeSize) - 1;
         }
-
-        current = c;
+      } else {
+        writeBits(clearCode);
+        dictReset();
       }
+      w = k;
     }
-
-    this.writeCode(current);
-    this.writeCode(this.eofCode);
-
-    if (this.bitsInAccum > 0) {
-      this.output.push(this.accumulator & 0xff);
-    }
-
-    return this.output;
   }
+
+  writeBits(w);
+  writeBits(eofCode);
+
+  if (bitCount > 0) output.push(bitBuf & 0xff);
+
+  return output;
 }
 
 function writeBlocks(data: number[]): number[] {
@@ -282,7 +223,11 @@ export function encodeGif(
   writeShort(output, width);
   writeShort(output, height);
 
-  output.push(0x80 | (paletteSizeBits - 1));
+  const globalColorTableFlag = 0x80;
+  const colorResolution = ((paletteSizeBits - 1) & 0x07) << 4;
+  const sortFlag = 0;
+  const sizeOfGlobalColorTable = (paletteSizeBits - 1) & 0x07;
+  output.push(globalColorTableFlag | colorResolution | sortFlag | sizeOfGlobalColorTable);
   output.push(0);
   output.push(0);
 
@@ -295,7 +240,6 @@ export function encodeGif(
   output.push(3, 1, 0, 0, 0);
 
   const minCodeSize = Math.max(2, paletteSizeBits);
-  const compressor = new LZWCompressor(minCodeSize);
 
   for (let frameIdx = 0; frameIdx < frames.length; frameIdx++) {
     const frame = frames[frameIdx];
@@ -303,7 +247,7 @@ export function encodeGif(
 
     const delayCs = Math.max(2, Math.round(frame.delay / 10));
     const useTransparent = transparent && hasTransparency;
-    const disposal = useTransparent ? 0x04 : 0x02;
+    const disposal = useTransparent ? 2 : 1;
     const transpFlag = useTransparent ? 0x01 : 0x00;
     const packedField = (disposal << 2) | transpFlag;
 
@@ -322,7 +266,7 @@ export function encodeGif(
 
     output.push(minCodeSize);
 
-    const compressed = compressor.compress(indices);
+    const compressed = lzwCompress(indices, minCodeSize);
     output.push(...writeBlocks(compressed));
   }
 
@@ -352,7 +296,11 @@ export async function encodeGifAsync(
   writeShort(output, width);
   writeShort(output, height);
 
-  output.push(0x80 | (paletteSizeBits - 1));
+  const globalColorTableFlag = 0x80;
+  const colorResolution = ((paletteSizeBits - 1) & 0x07) << 4;
+  const sortFlag = 0;
+  const sizeOfGlobalColorTable = (paletteSizeBits - 1) & 0x07;
+  output.push(globalColorTableFlag | colorResolution | sortFlag | sizeOfGlobalColorTable);
   output.push(0);
   output.push(0);
 
@@ -365,7 +313,6 @@ export async function encodeGifAsync(
   output.push(3, 1, 0, 0, 0);
 
   const minCodeSize = Math.max(2, paletteSizeBits);
-  const compressor = new LZWCompressor(minCodeSize);
 
   for (let frameIdx = 0; frameIdx < frames.length; frameIdx++) {
     const frame = frames[frameIdx];
@@ -373,7 +320,7 @@ export async function encodeGifAsync(
 
     const delayCs = Math.max(2, Math.round(frame.delay / 10));
     const useTransparent = transparent && hasTransparency;
-    const disposal = useTransparent ? 0x04 : 0x02;
+    const disposal = useTransparent ? 2 : 1;
     const transpFlag = useTransparent ? 0x01 : 0x00;
     const packedField = (disposal << 2) | transpFlag;
 
@@ -392,7 +339,7 @@ export async function encodeGifAsync(
 
     output.push(minCodeSize);
 
-    const compressed = compressor.compress(indices);
+    const compressed = lzwCompress(indices, minCodeSize);
     output.push(...writeBlocks(compressed));
 
     if (onProgress) {
