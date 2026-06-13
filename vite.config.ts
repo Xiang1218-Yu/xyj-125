@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from "vite-tsconfig-paths";
 import { traeBadgePlugin } from 'vite-plugin-trae-solo-badge';
+import { visualizer } from 'rollup-plugin-visualizer';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -25,7 +26,16 @@ export default defineConfig({
       autoTheme: true,
       autoThemeTarget: '#root'
     }), 
-    tsconfigPaths()
+    tsconfigPaths(),
+    visualizer({
+      filename: 'stats.html',
+      title: 'Bundle Analyzer',
+      template: 'treemap',
+      open: false,
+      gzipSize: true,
+      brotliSize: true,
+      emitFile: true,
+    })
   ],
   test: {
     environment: 'jsdom',

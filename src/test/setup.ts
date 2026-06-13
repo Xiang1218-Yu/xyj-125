@@ -1,3 +1,5 @@
+/// <reference types="vitest" />
+
 class LocalStorageMock {
   private store: Record<string, string> = {};
 

@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { usePixelEditorStore } from '@/store/pixelEditorStore';
+import { performanceMonitor } from '@/utils/performanceMonitor';
 import {
   Pencil, Eraser, PaintBucket, Grid3X3, ZoomIn, ZoomOut, Layers,
   ImagePlus, Eye, EyeOff, X, Minus, Square, Circle,
@@ -252,7 +253,11 @@ const PixelCanvas = () => {
 
     const frame = getCurrentFrame();
     const { width, height } = character;
+    const layerCount = frame?.layers.length || 0;
+    const pixelCount = width * height * Math.max(layerCount, 1);
 
+    performanceMonitor.measureCanvasRender(
+      () => {
     canvas.width = width * gridSize;
     canvas.height = height * gridSize;
 
@@ -336,6 +341,15 @@ const PixelCanvas = () => {
     if (isDrawing && startPos && currentPos) {
       drawShapePreview(ctx);
     }
+      },
+      {
+        canvasWidth: width * gridSize,
+        canvasHeight: height * gridSize,
+        gridSize,
+        pixelCount,
+        layerCount,
+      }
+    );
   }, [character, gridSize, showGrid, pixelColors, getCurrentFrame, onionSkinEnabled, onionSkinOpacity, getAdjacentFrames, referenceImageEnabled, referenceImageLoaded, referenceImageOpacity, selection, isDrawing, startPos, currentPos, selectedTool, currentColorIndex, fillShapes]);
 
   useEffect(() => {
